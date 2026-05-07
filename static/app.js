@@ -29,6 +29,7 @@ const elements = {
   referencePanel: document.getElementById("reference-panel"),
   questionCounter: document.getElementById("question-counter"),
   questionText: document.getElementById("question-text"),
+  scaleLegend: document.getElementById("scale-legend"),
   userName: document.getElementById("user-name"),
   accessPasswordField: document.getElementById("access-password-field"),
   accessPassword: document.getElementById("access-password"),
@@ -909,6 +910,13 @@ function renderQuestionState() {
     `Question ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
   );
   elements.questionText.textContent = question.text;
+  if (elements.scaleLegend) {
+    const negativeLabel = state.config.scaleHints?.[0] || bilingual("ネガティブ", "Negative");
+    const positiveLabel =
+      state.config.scaleHints?.[state.config.scaleHints.length - 1] ||
+      bilingual("ポジティブ", "Positive");
+    elements.scaleLegend.textContent = `1 = ${negativeLabel} / 5 = ${positiveLabel}`;
+  }
   elements.nextQuestion.textContent = isLastQuestion()
     ? bilingual("回答を送信", "Submit Responses")
     : bilingual("次の質問", "Next Question");

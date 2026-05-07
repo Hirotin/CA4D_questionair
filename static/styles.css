@@ -265,6 +265,20 @@ button {
   white-space: nowrap;
 }
 
+.scale-legend {
+  margin: 10px auto 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(10, 106, 109, 0.08);
+  color: var(--primary-strong);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .reference-panel {
   display: grid;
   justify-content: center;
@@ -477,6 +491,10 @@ button {
 
   .question-title {
     width: auto;
+    white-space: normal;
+  }
+
+  .scale-legend {
     white-space: normal;
   }
 

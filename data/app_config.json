@@ -3,7 +3,13 @@
   "subtitle": "6本の動画を横並びで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare six videos side by side and rate each one on a five-point scale.」動画1は固定表示、動画2〜6はデータベースからランダム抽選され、ローカルMP4とYouTube埋め込みの両方に対応します。「Video 1 is fixed, Videos 2 to 6 are randomly sampled from the database, and both local MP4 and YouTube embeds are supported.」",
   "slots": 6,
   "scaleLabels": ["1", "2", "3", "4", "5"],
-  "scaleHints": ["とても低い「Very low」", "やや低い「Somewhat low」", "普通「Neutral」", "やや高い「Somewhat high」", "とても高い「Very high」"],
+  "scaleHints": [
+    "ネガティブ「Negative」",
+    "ややネガティブ「Somewhat negative」",
+    "中立「Neutral」",
+    "ややポジティブ「Somewhat positive」",
+    "ポジティブ「Positive」"
+  ],
   "mailDelivery": {
     "enabled": false,
     "smtpHost": "",
