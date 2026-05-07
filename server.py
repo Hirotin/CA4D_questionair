@@ -709,6 +709,32 @@ def render_csv_text(fieldnames: list[str], rows: list[dict[str, Any]]) -> str:
     return buffer.getvalue()
 
 
+def sanitize_filename_component(value: str) -> str:
+    sanitized_chars: list[str] = []
+    previous_was_separator = False
+    for char in str(value).strip():
+        if char.isalnum():
+            sanitized_chars.append(char)
+            previous_was_separator = False
+            continue
+        if char in {" ", "-", "_"} and not previous_was_separator:
+            sanitized_chars.append("_")
+            previous_was_separator = True
+
+    sanitized = "".join(sanitized_chars).strip("_")
+    if not sanitized:
+        return "user"
+    return sanitized[:48]
+
+
+def build_submission_filename(user_name: str) -> str:
+    now = time.time()
+    timestamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+    milliseconds = int((now % 1) * 1000)
+    user_component = sanitize_filename_component(user_name)
+    return f"{timestamp}-{milliseconds:03d}_{user_component}.csv"
+
+
 def send_submission_email(
     *,
     config: dict[str, Any],
@@ -1110,7 +1136,7 @@ def save_submission_csv(payload: dict[str, Any], *, client_ip: str, user_agent: 
     submission_id = f"SUB-{time.strftime('%Y%m%d-%H%M%S')}-{random.randint(1000, 9999)}"
     fieldnames, rows = build_submission_rows(validated)
     csv_text = render_csv_text(fieldnames, rows)
-    download_filename = f"{submission_id}.csv"
+    download_filename = build_submission_filename(validated["userName"])
 
     with _csv_lock:
         file_exists = prepare_csv_results_file(fieldnames)
