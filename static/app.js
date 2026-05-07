@@ -4,7 +4,7 @@ const state = {
   answersByQuestion: [],
   currentQuestionIndex: 0,
   sessionToken: "",
-  started: false,
+  phase: "start",
   startChecking: false,
   submitting: false,
 };
@@ -17,16 +17,12 @@ const runtime = {
 };
 
 const elements = {
-  title: document.getElementById("survey-title"),
-  subtitle: document.getElementById("survey-subtitle"),
-  assignmentSummary: document.getElementById("assignment-summary"),
-  slotCount: document.getElementById("slot-count"),
-  randomSourceLabel: document.getElementById("random-source-label"),
-  randomSourceHint: document.getElementById("random-source-hint"),
+  startStage: document.getElementById("start-stage"),
+  surveyStage: document.getElementById("survey-stage"),
+  completionStage: document.getElementById("completion-stage"),
   progressValue: document.getElementById("progress-value"),
   progressNote: document.getElementById("progress-note"),
-  viewerLocked: document.getElementById("viewer-locked"),
-  viewerContent: document.getElementById("viewer-content"),
+  progressFill: document.getElementById("progress-fill"),
   videoGrid: document.getElementById("video-grid"),
   questionCounter: document.getElementById("question-counter"),
   questionText: document.getElementById("question-text"),
@@ -35,8 +31,8 @@ const elements = {
   accessPassword: document.getElementById("access-password"),
   startSurvey: document.getElementById("start-survey"),
   startReadinessStatus: document.getElementById("start-readiness-status"),
-  rerollRandom: document.getElementById("reroll-random"),
   nextQuestion: document.getElementById("next-question"),
+  completionMessage: document.getElementById("completion-message"),
   toast: document.getElementById("toast"),
 };
 
@@ -407,11 +403,17 @@ function validateAccessPassword() {
   return isValid;
 }
 
-function renderAccessState() {
+function renderAppPhase() {
   const bootstrapped = Boolean(state.config);
-  elements.viewerLocked.hidden = state.started;
-  elements.viewerContent.hidden = !state.started;
-  elements.startSurvey.hidden = state.started;
+  const isStartPhase = state.phase === "start";
+  const isSurveyPhase = state.phase === "survey";
+  const isCompletedPhase = state.phase === "completed";
+
+  document.body.dataset.phase = state.phase;
+  elements.startStage.hidden = !isStartPhase;
+  elements.surveyStage.hidden = !isSurveyPhase;
+  elements.completionStage.hidden = !isCompletedPhase;
+
   if (elements.accessPasswordField) {
     elements.accessPasswordField.hidden = !accessPasswordEnabled();
   }
@@ -419,14 +421,13 @@ function renderAccessState() {
     ? bilingual("認証と Google Sheets を確認中...", "Checking access and Google Sheets...")
     : bilingual("回答を始める", "Start Survey");
   elements.startSurvey.disabled =
-    !bootstrapped || state.started || state.submitting || state.startChecking;
-  elements.rerollRandom.disabled = !state.started || state.submitting;
-  elements.userName.disabled = state.started || state.startChecking;
+    !bootstrapped || !isStartPhase || state.submitting || state.startChecking;
+  elements.userName.disabled = !isStartPhase || state.startChecking;
   if (elements.accessPassword) {
-    elements.accessPassword.disabled = state.started || state.startChecking || !accessPasswordEnabled();
+    elements.accessPassword.disabled = !isStartPhase || state.startChecking || !accessPasswordEnabled();
   }
   if (elements.nextQuestion) {
-    elements.nextQuestion.disabled = !state.started || state.submitting;
+    elements.nextQuestion.disabled = !isSurveyPhase || state.submitting;
   }
 }
 
@@ -758,11 +759,16 @@ function updateProgress() {
   const answeredCount = getAnsweredCountForCurrentQuestion();
   elements.progressValue.textContent = `Q${state.currentQuestionIndex + 1} / ${state.config.questions.length}`;
   elements.progressNote.textContent = bilingual(
-    `この設問は ${answeredCount} / ${state.slots.length} 回答済みです`,
-    `${answeredCount} / ${state.slots.length} answered for this question`,
+    `${answeredCount} / ${state.slots.length} 回答済み`,
+    `${answeredCount} / ${state.slots.length} answered`,
   );
-  elements.nextQuestion.disabled = !state.started || state.submitting;
-  elements.rerollRandom.disabled = !state.started || state.submitting;
+  const progressRatio = state.config.questions.length
+    ? (state.currentQuestionIndex + 1) / state.config.questions.length
+    : 0;
+  if (elements.progressFill) {
+    elements.progressFill.style.width = `${Math.max(0, Math.min(progressRatio, 1)) * 100}%`;
+  }
+  elements.nextQuestion.disabled = state.phase !== "survey" || state.submitting;
 }
 
 function validateCurrentQuestion() {
@@ -811,51 +817,12 @@ function buildSubmissionPayload() {
   };
 }
 
-async function refreshRandomSlots({ successMessage, errorMessage } = {}) {
-  try {
-    elements.rerollRandom.disabled = true;
-    const response = await fetchJson("/api/resolve-slots", {
-      method: "POST",
-      body: JSON.stringify({
-        refresh: true,
-        sessionToken: state.sessionToken,
-      }),
-    });
-    setSlots(response.slots);
-    resetQuestionFlow();
-    elements.randomSourceLabel.textContent = response.randomSource.label;
-    elements.randomSourceHint.textContent = response.randomSource.hint;
-    renderVideoGrid();
-    renderQuestionState();
-    if (successMessage) {
-      showToast(successMessage, 4200);
-    }
-    return true;
-  } catch (error) {
-    showToast(errorMessage || error.message);
-    return false;
-  } finally {
-    elements.rerollRandom.disabled = false;
-  }
-}
-
-async function rerollRandomSlots() {
-  await refreshRandomSlots({
-    successMessage: bilingual(
-      "動画2〜6を再抽選しました。評価は最初の質問からやり直してください。",
-      "Videos 2 to 6 were reshuffled. Please restart ratings from the first question."
-    ),
-    errorMessage: bilingual("動画2〜6の再抽選に失敗しました。", "Failed to reshuffle Videos 2 to 6."),
-  });
-}
-
 async function submitSurvey() {
   if (!validateUserName()) {
     return;
   }
 
   state.submitting = true;
-  elements.rerollRandom.disabled = true;
   elements.nextQuestion.textContent = bilingual("送信中...", "Submitting...");
   updateProgress();
 
@@ -866,17 +833,22 @@ async function submitSurvey() {
       body: JSON.stringify(payload),
     });
     downloadSubmissionCsv(response.submissionCsv, response.downloadFilename);
-    const submissionStatusMessage = buildSubmissionStatusMessage(response);
-    await refreshRandomSlots({
-      successMessage: `${submissionStatusMessage} ${bilingual("次の動画セットへ更新しました。", "The next video set has been loaded.")}`,
-      errorMessage: `${submissionStatusMessage} ${bilingual("ただし次の動画セットへの更新に失敗しました。", "However, loading the next video set failed.")}`,
-    });
+    elements.toast.hidden = true;
+    cleanupMediaControllers();
+    state.phase = "completed";
+    state.sessionToken = "";
+    elements.completionMessage.textContent = bilingual(
+      "お疲れ様でした。回答はローカルパスに保存されています。",
+      "Thank you. Your responses have been saved to the local path."
+    );
+    renderAppPhase();
   } catch (error) {
     showToast(error.message);
   } finally {
     state.submitting = false;
-    elements.rerollRandom.disabled = false;
-    renderQuestionState();
+    if (state.phase === "survey") {
+      renderQuestionState();
+    }
   }
 }
 
@@ -890,7 +862,7 @@ async function runStartReadinessCheck() {
     ),
     "pending",
   );
-  renderAccessState();
+  renderAppPhase();
 
   try {
     const response = await fetchJson("/api/start-session", {
@@ -903,8 +875,6 @@ async function runStartReadinessCheck() {
     state.sessionToken = String(response.sessionToken || "");
     setSlots(response.slots || []);
     resetQuestionFlow();
-    elements.randomSourceLabel.textContent = response.randomSource?.label || "";
-    elements.randomSourceHint.textContent = response.randomSource?.hint || "";
     const message =
       response.message ||
       bilingual(
@@ -928,7 +898,7 @@ async function runStartReadinessCheck() {
     return false;
   } finally {
     state.startChecking = false;
-    renderAccessState();
+    renderAppPhase();
   }
 }
 
@@ -951,17 +921,10 @@ async function handleStartSurvey() {
     return;
   }
 
-  state.started = true;
-  renderAccessState();
+  state.phase = "survey";
+  renderAppPhase();
   renderVideoGrid();
   renderQuestionState();
-  showToast(
-    bilingual(
-      "Google Sheets の保存確認後に回答を開始しました。",
-      "The survey started after Google Sheets availability was confirmed."
-    ),
-    2800,
-  );
 }
 
 async function handleNextQuestion() {
@@ -988,13 +951,6 @@ async function bootstrap() {
     state.config = payload;
     setSlots(payload.slotsResolved || []);
     resetQuestionFlow();
-
-    elements.title.textContent = payload.title;
-    elements.subtitle.textContent = payload.subtitle;
-    elements.assignmentSummary.textContent = payload.assignmentSummary;
-    elements.slotCount.textContent = String(payload.slots);
-    elements.randomSourceLabel.textContent = payload.randomSource.label;
-    elements.randomSourceHint.textContent = payload.randomSource.hint;
     setStartReadinessStatus(
       bilingual(
         accessPasswordEnabled()
@@ -1006,14 +962,19 @@ async function bootstrap() {
       ),
       "info",
     );
-    renderAccessState();
+    if (elements.completionMessage) {
+      elements.completionMessage.textContent = bilingual(
+        "お疲れ様でした。回答はローカルパスに保存されています。",
+        "Thank you. Your responses have been saved to the local path."
+      );
+    }
+    renderAppPhase();
   } catch (error) {
     showToast(error.message, 6000);
   }
 }
 
 elements.startSurvey.addEventListener("click", handleStartSurvey);
-elements.rerollRandom.addEventListener("click", rerollRandomSlots);
 elements.nextQuestion.addEventListener("click", handleNextQuestion);
 elements.userName?.addEventListener("input", clearUserNameInvalidState);
 elements.accessPassword?.addEventListener("input", clearAccessPasswordInvalidState);
