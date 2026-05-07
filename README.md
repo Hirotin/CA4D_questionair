@@ -44,6 +44,12 @@ python3 server.py --port 8000
 
 Render の Web Service は公開URLを持ち、アプリは `0.0.0.0` で待ち受ける必要があります。今の `server.py` は `PORT` があれば自動で公開向けに待ち受けます。
 
+このリポジトリには [render.yaml](/Users/hiroki/.ssh/video-survey-app/render.yaml) を入れてあります。Render で `Blueprint` として読み込めば、`SURVEY_START_PASSWORD` などの `sync: false` 変数は初回作成時に入力を求められます。[Blueprint YAML Reference](https://render.com/docs/blueprint-spec)
+
+注意:
+- Render の free web service はファイルシステムが ephemeral です。`responses/` に書いた CSV は再デプロイや再起動で消えます。[Persistent Disks](https://render.com/docs/disks) [Deploy for Free](https://render.com/docs/free)
+- 長期保存したい場合は Google Sheets 連携を有効にするか、有料プランで persistent disk を付けてください。[Persistent Disks](https://render.com/docs/disks)
+
 ## データベース
 
 ランダム動画は `data/random_video_catalog.sqlite3` を使います。サーバー起動時または初回アクセス時に自動作成され、[app_config.json](/Users/hiroki/.ssh/video-survey-app/data/app_config.json) の `randomVideoDatabase.seedVideos` を初期登録します。
@@ -148,7 +154,7 @@ SMTP パスワードは JSON に直接書かず、環境変数 `SURVEY_SMTP_PASS
 - `passwordEnv`: 本番ではこちらの環境変数を優先
 - `sessionTtlMinutes`: 認証後セッションの有効時間
 
-公開時は JSON の `password` を検証用の値にしたままにせず、`SURVEY_START_PASSWORD` をホスティング側の環境変数に入れる運用を推奨します。
+公開時は `SURVEY_START_PASSWORD` をホスティング側の環境変数に入れてください。公開リポジトリの `app_config.json` には開始パスワードを保持しない想定です。
 
 ## Apps Script 連携
 

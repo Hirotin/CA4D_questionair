@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: ca4d-questionair
+    runtime: python
+    plan: free
+    buildCommand: "true"
+    startCommand: python3 server.py
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: SURVEY_START_PASSWORD
+        sync: false
+      - key: SURVEY_APPS_SCRIPT_ENDPOINT
+        sync: false
+      - key: SURVEY_APPS_SCRIPT_TOKEN
+        sync: false
+      - key: SURVEY_SMTP_PASSWORD
+        sync: false

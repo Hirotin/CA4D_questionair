@@ -18,7 +18,7 @@
   },
   "accessControl": {
     "enabled": true,
-    "password": "set-a-password-before-public-release",
+    "password": "",
     "passwordEnv": "SURVEY_START_PASSWORD",
     "sessionTtlMinutes": 720
   },
