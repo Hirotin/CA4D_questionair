@@ -1,0 +1,108 @@
+{
+  "title": "動画アンケートスタジオ「Video Survey Studio」",
+  "subtitle": "6本の動画を横並びで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare six videos side by side and rate each one on a five-point scale.」動画1は固定表示、動画2〜6はデータベースからランダム抽選され、ローカルMP4とYouTube埋め込みの両方に対応します。「Video 1 is fixed, Videos 2 to 6 are randomly sampled from the database, and both local MP4 and YouTube embeds are supported.」",
+  "slots": 6,
+  "scaleLabels": ["1", "2", "3", "4", "5"],
+  "scaleHints": ["とても低い「Very low」", "やや低い「Somewhat low」", "普通「Neutral」", "やや高い「Somewhat high」", "とても高い「Very high」"],
+  "mailDelivery": {
+    "enabled": false,
+    "smtpHost": "",
+    "smtpPort": 587,
+    "useStartTls": true,
+    "useSsl": false,
+    "username": "",
+    "passwordEnv": "SURVEY_SMTP_PASSWORD",
+    "fromAddress": "",
+    "toAddress": "",
+    "subjectPrefix": "動画アンケート結果「Video Survey Result」"
+  },
+  "accessControl": {
+    "enabled": true,
+    "password": "set-a-password-before-public-release",
+    "passwordEnv": "SURVEY_START_PASSWORD",
+    "sessionTtlMinutes": 720
+  },
+  "appsScriptSync": {
+    "enabled": false,
+    "endpointUrl": "",
+    "endpointEnv": "SURVEY_APPS_SCRIPT_ENDPOINT",
+    "token": "",
+    "tokenEnv": "SURVEY_APPS_SCRIPT_TOKEN",
+    "timeoutSeconds": 15
+  },
+  "questions": [
+    {
+      "id": "naturalness",
+      "text": "動きが自然かどうか「Please rate the naturalness of the motion」"
+    },
+    {
+      "id": "similarity_to_video_1",
+      "text": "動画1とどれだけ動きが近いか「Please rate the similarity of the motion compared to Video 1」"
+    },
+    {
+      "id": "shape_consistency",
+      "text": "形状の一貫性「Please rate the shape consistency of the motion」"
+    },
+    {
+      "id": "motion_diversity",
+      "text": "動画内の動きの多様性を評価してください。「Please rate the motion diversity in the videos」"
+    },
+    {
+      "id": "text_alignment",
+      "text": "テキスト整合性「Please rate the text alignment」"
+    }
+  ],
+  "fixedSlotVideo": {
+    "id": "fixed-youtube-32w-ktSzG5g",
+    "title": "YouTube Fixed / 32w_ktSzG5g",
+    "description": "動画1で固定表示される YouTube 動画です。「This YouTube video is fixed in Video 1.」",
+    "url": "https://youtu.be/32w_ktSzG5g",
+    "sourceLabel": "固定動画「Fixed Video」",
+    "videoGroup": "DEMO",
+    "videoCode": "DEMO-001",
+    "methodName": "YouTube Demo",
+    "sampleName": "Fixed Sample 01",
+    "promptText": "Demo prompt for fixed reference video."
+  },
+  "randomVideoDatabase": {
+    "path": "data/random_video_catalog.sqlite3",
+    "seedVideos": [
+      {
+        "id": "db-ice-to-water",
+        "title": "DB Sample / Ice to Water",
+        "description": "データベース登録済みのサンプル動画です。「This is a sample video registered in the database.」",
+        "url": "/static/videos/completionany4d_ice_to_water.mp4",
+        "sourceLabel": "データベースランダム「Database Random」",
+        "videoGroup": "DEMO",
+        "videoCode": "DEMO-002",
+        "methodName": "Local Demo",
+        "sampleName": "Ice to Water",
+        "promptText": "Demo prompt for local sample video."
+      },
+      {
+        "id": "db-bush-to-flower",
+        "title": "DB Sample / Bush to Flower",
+        "description": "データベース登録済みのサンプル動画です。「This is a sample video registered in the database.」",
+        "url": "/static/videos/completionany4d_bush_bud_flower.mp4",
+        "sourceLabel": "データベースランダム「Database Random」",
+        "videoGroup": "DEMO",
+        "videoCode": "DEMO-003",
+        "methodName": "Local Demo",
+        "sampleName": "Bush to Flower",
+        "promptText": "Demo prompt for local sample video."
+      },
+      {
+        "id": "db-youtube-HJREWh_W90Q",
+        "title": "YouTube Random / HJREWh_W90Q",
+        "description": "データベース登録済みの YouTube ランダム動画です。「This is a YouTube random video registered in the database.」",
+        "url": "https://youtu.be/HJREWh_W90Q",
+        "sourceLabel": "データベースランダム「Database Random」",
+        "videoGroup": "DEMO",
+        "videoCode": "DEMO-004",
+        "methodName": "YouTube Demo",
+        "sampleName": "Random Sample 01",
+        "promptText": "Demo prompt for random YouTube video."
+      }
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>動画アンケートスタジオ「Video Survey Studio」</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Video Survey System</p>
+          <h1 id="survey-title">動画アンケートスタジオ「Video Survey Studio」</h1>
+          <p id="survey-subtitle" class="hero-description"></p>
+          <p id="assignment-summary" class="assignment-summary"></p>
+        </div>
+        <div class="hero-panel">
+          <div class="metric-card">
+            <span class="metric-label">表示枠「Visible Slots」</span>
+            <strong id="slot-count" class="metric-value">6</strong>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">ランダム取得元「Random Source」</span>
+            <strong id="random-source-label" class="metric-value">読み込み中「Loading」</strong>
+            <span id="random-source-hint" class="metric-note"></span>
+          </div>
+          <div class="metric-card accent">
+            <span class="metric-label">設問進行「Question Progress」</span>
+            <strong id="progress-value" class="metric-value">Q1 / 1</strong>
+            <span id="progress-note" class="metric-note">この設問は 0 / 6 回答済みです「0 / 6 answered for this question」</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="toolbar">
+        <div class="toolbar-copy">
+          <h2>視聴と評価「Watch and Rate」</h2>
+          <p>上段の動画を見た後、中央の設問に対して6本すべてに数字で回答してください。「Watch the videos above, then rate all six videos for the question shown in the center.」</p>
+          <label class="user-meta-field" for="user-name">
+            <span class="user-meta-label">User名（必須）「User Name (Required)」</span>
+            <input
+              id="user-name"
+              class="user-meta-input"
+              type="text"
+              maxlength="80"
+              placeholder="必須で入力「Required」"
+              autocomplete="nickname"
+              required
+              aria-required="true"
+            />
+          </label>
+          <label id="access-password-field" class="user-meta-field" for="access-password">
+            <span class="user-meta-label">開始パスワード（必須）「Start Password (Required)」</span>
+            <input
+              id="access-password"
+              class="user-meta-input"
+              type="password"
+              placeholder="パスワードを入力「Enter password」"
+              autocomplete="current-password"
+            />
+          </label>
+        </div>
+        <div class="toolbar-actions">
+          <button id="start-survey" class="primary-button" type="button" disabled>回答を始める「Start Survey」</button>
+          <button id="reroll-random" class="ghost-button" type="button" disabled>動画2〜6を再抽選「Reshuffle Videos 2 to 6」</button>
+        </div>
+      </section>
+
+      <section class="lane-block viewer-block">
+        <div class="lane-head">
+          <div>
+            <p class="lane-eyebrow">Upper Half</p>
+            <h2>視聴エリア「Viewing Area」</h2>
+          </div>
+        </div>
+        <div id="viewer-locked" class="viewer-locked">
+          <p class="viewer-locked-title">開始前です「Before Start」</p>
+          <p class="viewer-locked-text">上で User名 と必要なら開始パスワードを入力してから、回答を始める を押すと動画が表示されます。「Enter your user name and, if required, the start password above, then press Start Survey to reveal the videos.」</p>
+          <p id="start-readiness-status" class="viewer-locked-status" data-state="info">開始時に Google Sheets への保存状態を自動確認します。「The app will automatically check Google Sheets availability before starting.」</p>
+        </div>
+        <div id="viewer-content" hidden>
+          <div class="question-actions question-actions-top">
+            <button id="next-question" class="primary-button" type="button">次の質問「Next Question」</button>
+          </div>
+          <div class="question-focus">
+            <p id="question-counter" class="question-counter">質問 1 / 1「Question 1 / 1」</p>
+            <h2 id="question-text" class="question-title">読み込み中...「Loading...」</h2>
+            <p class="question-instruction">各動画の下にある数字を選び、6本すべて回答してから次へ進んでください。「Choose a number under each video and answer all six before moving on.」</p>
+          </div>
+          <div class="lane-scroll">
+            <div id="video-grid" class="lane-grid video-grid" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
