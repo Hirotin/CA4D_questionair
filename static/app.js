@@ -11,6 +11,7 @@ const state = {
 
 const runtime = {
   mediaControllers: new Map(),
+  referenceController: null,
   playbackToken: 0,
   youtubeApiPromise: null,
   autoplayWarningShown: false,
@@ -24,6 +25,7 @@ const elements = {
   progressNote: document.getElementById("progress-note"),
   progressFill: document.getElementById("progress-fill"),
   videoGrid: document.getElementById("video-grid"),
+  referencePanel: document.getElementById("reference-panel"),
   questionCounter: document.getElementById("question-counter"),
   questionText: document.getElementById("question-text"),
   userName: document.getElementById("user-name"),
@@ -252,7 +254,29 @@ function waitForFileVideoReady(video) {
   });
 }
 
+function destroyReferenceController() {
+  if (!runtime.referenceController) {
+    return;
+  }
+
+  try {
+    runtime.referenceController.destroy();
+  } catch (error) {
+    console.debug("Failed to destroy reference controller", error);
+  }
+  runtime.referenceController = null;
+}
+
+function getPlaybackControllers() {
+  const controllers = Array.from(runtime.mediaControllers.values());
+  if (runtime.referenceController) {
+    controllers.push(runtime.referenceController);
+  }
+  return controllers;
+}
+
 function cleanupMediaControllers() {
+  destroyReferenceController();
   runtime.mediaControllers.forEach((controller) => {
     try {
       controller.destroy();
@@ -264,7 +288,7 @@ function cleanupMediaControllers() {
 }
 
 async function synchronizeVideoPlayback(playbackToken) {
-  const controllers = Array.from(runtime.mediaControllers.values());
+  const controllers = getPlaybackControllers();
   if (!controllers.length) {
     return;
   }
@@ -301,6 +325,10 @@ async function synchronizeVideoPlayback(playbackToken) {
 
 function getCurrentQuestion() {
   return state.config.questions[state.currentQuestionIndex];
+}
+
+function isSimilarityQuestion(question = getCurrentQuestion()) {
+  return question?.id === "similarity_to_video_1";
 }
 
 function buildEmptyAnswers() {
@@ -493,6 +521,10 @@ function createUnavailableController(card, message) {
   return {
     ready: Promise.resolve(),
     reset() {},
+    getCurrentTime() {
+      return 0;
+    },
+    seekTo() {},
     play() {
       return Promise.resolve();
     },
@@ -535,6 +567,16 @@ function createFileVideoController(card, descriptor) {
         fileVideo.currentTime = 0;
       } catch (error) {
         console.debug("Failed to reset local video time", error);
+      }
+    },
+    getCurrentTime() {
+      return Number.isFinite(fileVideo.currentTime) ? fileVideo.currentTime : 0;
+    },
+    seekTo(seconds) {
+      try {
+        fileVideo.currentTime = Number.isFinite(seconds) ? Math.max(seconds, 0) : 0;
+      } catch (error) {
+        console.debug("Failed to seek local video", error);
       }
     },
     async play() {
@@ -644,6 +686,30 @@ function createYouTubeController(card, descriptor, playbackToken, slotIndex) {
         console.debug("Failed to reset YouTube player", error);
       }
     },
+    getCurrentTime() {
+      if (!player || typeof player.getCurrentTime !== "function") {
+        return 0;
+      }
+
+      try {
+        const currentTime = player.getCurrentTime();
+        return Number.isFinite(currentTime) ? currentTime : 0;
+      } catch (error) {
+        console.debug("Failed to get YouTube current time", error);
+        return 0;
+      }
+    },
+    seekTo(seconds) {
+      if (!player) {
+        return;
+      }
+
+      try {
+        player.seekTo(Number.isFinite(seconds) ? Math.max(seconds, 0) : 0, true);
+      } catch (error) {
+        console.debug("Failed to seek YouTube player", error);
+      }
+    },
     play() {
       if (!player) {
         return Promise.resolve();
@@ -688,6 +754,73 @@ function createMediaController(slot, card, playbackToken) {
   }
 
   return createFileVideoController(card, descriptor);
+}
+
+function createReferenceCard(slot) {
+  const card = document.createElement("article");
+  card.className = "reference-card";
+  card.innerHTML = `
+    <div class="slot-topline">
+      <div>
+        <h3 class="slot-title">${slot.slotLabel}</h3>
+      </div>
+    </div>
+    <p class="reference-caption">${bilingual(
+      "比較基準として固定表示しています。",
+      "Shown as a fixed reference for comparison.",
+    )}</p>
+    <div class="video-frame">
+      <div class="video-placeholder" data-role="placeholder">${bilingual("動画を読み込んでいます...", "Loading video...")}</div>
+      <div class="youtube-player-surface" data-role="youtube-player" hidden></div>
+      <video data-role="video" muted loop playsinline preload="auto" hidden></video>
+    </div>
+  `;
+  return card;
+}
+
+async function renderReferencePanel() {
+  if (!elements.referencePanel) {
+    return;
+  }
+
+  destroyReferenceController();
+  elements.referencePanel.hidden = true;
+  elements.referencePanel.innerHTML = "";
+
+  if (!isSimilarityQuestion() || !state.slots.length) {
+    return;
+  }
+
+  const referenceSlot = state.slots.find((slot) => slot.slotIndex === 0) || state.slots[0];
+  if (!referenceSlot) {
+    return;
+  }
+
+  const card = createReferenceCard(referenceSlot);
+  elements.referencePanel.appendChild(card);
+  elements.referencePanel.hidden = false;
+
+  const controller = createMediaController(referenceSlot, card, runtime.playbackToken);
+  runtime.referenceController = controller;
+
+  const sourceController = runtime.mediaControllers.get(referenceSlot.slotIndex);
+  try {
+    await Promise.all([
+      Promise.resolve(sourceController?.ready).catch(() => undefined),
+      Promise.resolve(controller.ready).catch(() => undefined),
+    ]);
+    const currentTime = typeof sourceController?.getCurrentTime === "function"
+      ? sourceController.getCurrentTime()
+      : 0;
+    if (typeof controller.seekTo === "function") {
+      controller.seekTo(currentTime);
+    }
+    await Promise.resolve(controller.play()).catch((error) => {
+      console.debug("Reference playback start failed", error);
+    });
+  } catch (error) {
+    console.debug("Failed to prepare reference panel", error);
+  }
 }
 
 function renderVideoGrid() {
@@ -753,6 +886,7 @@ function renderQuestionState() {
     : bilingual("次の質問", "Next Question");
   state.slots.forEach(updateVideoCardRating);
   updateProgress();
+  void renderReferencePanel();
 }
 
 function updateProgress() {

@@ -265,6 +265,33 @@ button {
   white-space: nowrap;
 }
 
+.reference-panel {
+  display: grid;
+  justify-content: center;
+  margin-top: -4px;
+}
+
+.reference-card {
+  width: 540px;
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: var(--card-strong);
+  border: 1px solid rgba(10, 106, 109, 0.12);
+  box-shadow: 0 18px 34px rgba(18, 36, 36, 0.1);
+}
+
+.reference-card .slot-topline {
+  justify-content: center;
+}
+
+.reference-caption {
+  margin: 0 0 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
 .lane-scroll {
   overflow-x: auto;
   padding-bottom: 10px;
