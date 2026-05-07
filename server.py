@@ -200,14 +200,31 @@ def get_apps_script_sync_settings(config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw_settings, dict):
         return {"enabled": False}
 
+    endpoint_env_name = (
+        str(raw_settings.get("endpointEnv", "SURVEY_APPS_SCRIPT_ENDPOINT")).strip()
+        or "SURVEY_APPS_SCRIPT_ENDPOINT"
+    )
+    token_env_name = (
+        str(raw_settings.get("tokenEnv", "SURVEY_APPS_SCRIPT_TOKEN")).strip()
+        or "SURVEY_APPS_SCRIPT_TOKEN"
+    )
+    enabled_env_name = (
+        str(raw_settings.get("enabledEnv", "SURVEY_APPS_SCRIPT_ENABLED")).strip()
+        or "SURVEY_APPS_SCRIPT_ENABLED"
+    )
+    endpoint_env_value = os.environ.get(endpoint_env_name, "").strip()
+    token_env_value = os.environ.get(token_env_name, "").strip()
+    enabled_env_value = os.environ.get(enabled_env_name, "").strip().lower()
+    env_requested_enable = enabled_env_value in {"1", "true", "yes", "on"}
+    env_sync_present = bool(endpoint_env_value or token_env_value or enabled_env_value)
+
     return {
-        "enabled": bool(raw_settings.get("enabled", False)),
+        "enabled": bool(raw_settings.get("enabled", False) or env_requested_enable or env_sync_present),
         "endpointUrl": str(raw_settings.get("endpointUrl", "")).strip(),
-        "endpointEnv": str(raw_settings.get("endpointEnv", "SURVEY_APPS_SCRIPT_ENDPOINT")).strip()
-        or "SURVEY_APPS_SCRIPT_ENDPOINT",
+        "endpointEnv": endpoint_env_name,
         "token": str(raw_settings.get("token", "")).strip(),
-        "tokenEnv": str(raw_settings.get("tokenEnv", "SURVEY_APPS_SCRIPT_TOKEN")).strip()
-        or "SURVEY_APPS_SCRIPT_TOKEN",
+        "tokenEnv": token_env_name,
+        "enabledEnv": enabled_env_name,
         "timeoutSeconds": max(int(raw_settings.get("timeoutSeconds", 15)), 1),
     }
 
