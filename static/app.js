@@ -25,6 +25,7 @@ const elements = {
   progressNote: document.getElementById("progress-note"),
   progressFill: document.getElementById("progress-fill"),
   videoGrid: document.getElementById("video-grid"),
+  laneScroll: document.getElementById("lane-scroll"),
   referencePanel: document.getElementById("reference-panel"),
   questionCounter: document.getElementById("question-counter"),
   questionText: document.getElementById("question-text"),
@@ -63,6 +64,31 @@ function wait(milliseconds) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, milliseconds);
   });
+}
+
+function enableWheelHorizontalScroll() {
+  const scroller = elements.laneScroll;
+  if (!scroller || scroller.dataset.wheelBound === "true") {
+    return;
+  }
+
+  scroller.dataset.wheelBound = "true";
+  scroller.addEventListener(
+    "wheel",
+    (event) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+        return;
+      }
+
+      if (scroller.scrollWidth <= scroller.clientWidth) {
+        return;
+      }
+
+      event.preventDefault();
+      scroller.scrollLeft += event.deltaY;
+    },
+    { passive: false },
+  );
 }
 
 function extractYouTubeVideoId(sourceValue) {
@@ -1114,3 +1140,4 @@ elements.userName?.addEventListener("input", clearUserNameInvalidState);
 elements.accessPassword?.addEventListener("input", clearAccessPasswordInvalidState);
 
 bootstrap();
+enableWheelHorizontalScroll();
