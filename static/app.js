@@ -516,7 +516,8 @@ function createVideoCard(slot) {
     <div class="video-frame">
       <div class="video-placeholder" data-role="placeholder">${bilingual("動画を読み込んでいます...", "Loading video...")}</div>
       <div class="youtube-player-surface" data-role="youtube-player" hidden></div>
-      <video data-role="video" muted loop playsinline preload="auto" hidden></video>
+      <video data-role="video" muted loop playsinline preload="auto" disablepictureinpicture tabindex="-1" hidden></video>
+      <div class="video-interaction-shield" aria-hidden="true"></div>
     </div>
     <div class="video-rating">
       <div class="rating-grid">${ratingOptions}</div>
@@ -798,7 +799,8 @@ function createReferenceCard(slot) {
     <div class="video-frame">
       <div class="video-placeholder" data-role="placeholder">${bilingual("動画を読み込んでいます...", "Loading video...")}</div>
       <div class="youtube-player-surface" data-role="youtube-player" hidden></div>
-      <video data-role="video" muted loop playsinline preload="auto" hidden></video>
+      <video data-role="video" muted loop playsinline preload="auto" disablepictureinpicture tabindex="-1" hidden></video>
+      <div class="video-interaction-shield" aria-hidden="true"></div>
     </div>
   `;
   return card;

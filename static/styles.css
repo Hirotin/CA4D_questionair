@@ -347,10 +347,12 @@ button {
 .video-frame video {
   object-fit: cover;
   display: block;
+  pointer-events: none;
 }
 
 .youtube-player-surface {
   background: #000;
+  pointer-events: none;
 }
 
 .youtube-player-surface iframe {
@@ -358,6 +360,7 @@ button {
   height: 100%;
   display: block;
   border: 0;
+  pointer-events: none;
 }
 
 .video-placeholder {
@@ -369,6 +372,13 @@ button {
   line-height: 1.6;
   z-index: 1;
   pointer-events: none;
+}
+
+.video-interaction-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: transparent;
 }
 
 .video-card.is-missing {
