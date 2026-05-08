@@ -1,7 +1,7 @@
 {
   "title": "動画アンケートスタジオ「Video Survey Studio」",
-  "subtitle": "21本の動画を横スクロールで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare twenty-one videos in a horizontally scrollable row and rate each one on a five-point scale.」動画1は固定表示、動画2〜21はデータベースからランダム抽選され、ローカルMP4とYouTube埋め込みの両方に対応します。「Video 1 is fixed, Videos 2 to 21 are randomly sampled from the database, and both local MP4 and YouTube embeds are supported.」",
-  "slots": 21,
+  "subtitle": "7本の動画を横スクロールで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare seven videos in a horizontally scrollable row and rate each one on a five-point scale.」動画1は固定表示、動画2〜7はデータベースからランダム抽選されます。「Video 1 is fixed, and Videos 2 to 7 are randomly sampled from the database.」",
+  "slots": 7,
   "scaleLabels": ["1", "2", "3", "4", "5"],
   "scaleHints": [
     "ネガティブ「Negative」",
@@ -64,21 +64,21 @@
     }
   ],
   "fixedSlotVideo": {
-    "id": "fixed-youtube-32w-ktSzG5g",
-    "title": "YouTube Fixed / 32w_ktSzG5g",
-    "description": "動画1で固定表示される YouTube 動画です。「This YouTube video is fixed in Video 1.」",
-    "url": "https://youtu.be/32w_ktSzG5g",
+    "id": "r2-1013-sc4d-fp-front-right60",
+    "title": "R2 Sample / 1013 / sc4d_fp_front-right60",
+    "description": "R2 uploaded sample for shape 1013, method sc4d_fp_front-right60.",
+    "objectKey": "16frame/1013_1013_fa9f51beb7634443be3fce568b66af73_9_offset0_0000-0095_longseq_f0080-0095_np16/sc4d_fp_front-right60.mp4",
     "sourceLabel": "固定動画「Fixed Video」",
-    "videoGroup": "DEMO",
-    "videoCode": "DEMO-001",
-    "methodName": "YouTube Demo",
-    "sampleName": "Fixed Sample 01",
-    "promptText": "Demo prompt for fixed reference video."
+    "videoGroup": "R2-16FRAME",
+    "videoCode": "R2-1013-sc4d-fp-front-right60",
+    "methodName": "sc4d_fp_front-right60",
+    "sampleName": "Shape 1013",
+    "promptText": ""
   },
   "randomVideoDatabase": {
-    "path": "data/random_video_catalog_20260508_r2.sqlite3",
+    "path": "data/random_video_catalog_16frame_r2.sqlite3",
     "catalogCsvPaths": [
-      "data/video_catalog_20260508_r2.csv"
+      "data/video_catalog_16frame_r2_random.csv"
     ],
     "seedVideos": []
   }

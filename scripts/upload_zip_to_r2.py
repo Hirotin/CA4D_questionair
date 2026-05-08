@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import os
+import re
 import sys
 import zipfile
 from pathlib import Path
@@ -20,6 +22,25 @@ def sanitize_method_name(source_name: str) -> str:
     if candidate.lower().endswith(".mp4"):
         candidate = candidate[:-4]
     return candidate or "Method"
+
+
+def split_sample_folder(folder_name: str) -> tuple[str, str]:
+    parts = folder_name.split("_")
+    if len(parts) >= 2 and parts[0].isdigit():
+        return parts[0], folder_name
+    return folder_name, folder_name
+
+
+def build_manifest_index(zf: zipfile.ZipFile) -> dict[str, dict]:
+    manifests: dict[str, dict] = {}
+    for name in zf.namelist():
+        if not name.endswith("manifest.json"):
+            continue
+        try:
+            manifests[str(Path(name).parent)] = json.loads(zf.read(name))
+        except Exception:
+            continue
+    return manifests
 
 
 def build_method_overrides(zf: zipfile.ZipFile) -> dict[tuple[str, str], str]:
@@ -46,25 +67,66 @@ def build_method_overrides(zf: zipfile.ZipFile) -> dict[tuple[str, str], str]:
 
 
 def build_catalog_row(
-    zip_member_name: str, *, object_key: str, method_overrides: dict[tuple[str, str], str]
+    zip_member_name: str,
+    *,
+    object_key: str,
+    method_overrides: dict[tuple[str, str], str],
+    manifest_index: dict[str, dict],
 ) -> dict[str, str]:
-    stem = Path(zip_member_name).stem
-    _, shape_id, method_index = stem.split("_")
-    method_name = method_overrides.get((shape_id, method_index), f"Method {method_index}")
+    member_path = Path(zip_member_name)
+    stem = member_path.stem
+    parent_folder = member_path.parent.name
+    shape_id, sample_folder = split_sample_folder(parent_folder)
+    manifest = manifest_index.get(str(member_path.parent), {})
+
+    stem_parts = stem.split("_")
+    if len(stem_parts) >= 3 and stem_parts[0].isdigit():
+        _, shape_id_from_stem, method_index = stem_parts[:3]
+        shape_id = shape_id_from_stem
+        method_name = method_overrides.get((shape_id, method_index), f"Method {method_index}")
+        video_code = f"R2-{shape_id}-{method_index}"
+        row_id = f"r2-{shape_id}-{method_index}"
+        title = f"R2 Sample / {shape_id} / {method_index}"
+        description = f"R2 uploaded sample for shape {shape_id}, method {method_index}."
+    else:
+        method_name = sanitize_method_name(stem)
+        video_code = f"R2-{shape_id}-{slugify(method_name)}"
+        row_id = f"r2-{shape_id}-{slugify(method_name)}"
+        title = f"R2 Sample / {shape_id} / {method_name}"
+        description = (
+            f"R2 uploaded sample for shape {shape_id}, method {method_name}."
+        )
+
+    prompt_text = ""
+    if isinstance(manifest, dict):
+        prompt_text = str(
+            manifest.get("prompt")
+            or manifest.get("text_prompt")
+            or manifest.get("caption")
+            or ""
+        ).strip()
+
     return {
-        "id": f"r2-{shape_id}-{method_index}",
-        "title": f"R2 Sample / {shape_id} / {method_index}",
-        "description": f"R2 uploaded sample for shape {shape_id}, method {method_index}.",
+        "id": row_id,
+        "title": title,
+        "description": description,
         "object_key": object_key,
         "video_url": "",
         "source_label": "データベースランダム「Database Random」",
-        "video_group": "R2-20260508",
-        "video_code": f"R2-{shape_id}-{method_index}",
+        "video_group": "R2-16FRAME",
+        "video_code": video_code,
         "method_name": method_name,
         "sample_name": f"Shape {shape_id}",
-        "prompt_text": "",
+        "prompt_text": prompt_text,
         "is_active": "1",
     }
+
+
+def slugify(value: str) -> str:
+    text = str(value).strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = text.strip("-")
+    return text or "video"
 
 
 def upload_zip(
@@ -98,6 +160,7 @@ def upload_zip(
     catalog_rows: list[dict[str, str]] = []
     with zipfile.ZipFile(zip_path) as zf:
         method_overrides = build_method_overrides(zf)
+        manifest_index = build_manifest_index(zf)
         mp4_names = sorted(
             name
             for name in zf.namelist()
@@ -112,6 +175,7 @@ def upload_zip(
                     member_name,
                     object_key=object_key,
                     method_overrides=method_overrides,
+                    manifest_index=manifest_index,
                 )
             )
             uploaded_count += 1
