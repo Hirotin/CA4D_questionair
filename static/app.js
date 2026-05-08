@@ -372,6 +372,12 @@ function setSlots(resolvedSlots) {
     ...slot,
     loading: false,
   }));
+  if (elements.videoGrid) {
+    elements.videoGrid.style.setProperty(
+      "--lane-slot-count",
+      String(Math.max(state.slots.length, 1)),
+    );
+  }
 }
 
 function getCurrentAnswerMap() {
@@ -644,8 +650,8 @@ function createYouTubeController(card, descriptor, playbackToken, slotIndex) {
         }
 
         player = new YT.Player(playerHostId, {
-          width: 512,
-          height: 512,
+          width: 256,
+          height: 256,
           videoId: descriptor.youtubeId,
           playerVars: {
             autoplay: 0,

@@ -1,6 +1,11 @@
 :root {
   --bg-top: #f5ecd8;
   --bg-bottom: #d8ebe4;
+  --video-frame-size: 256px;
+  --video-card-width: 284px;
+  --reference-card-width: 284px;
+  --lane-gap: 12px;
+  --lane-slot-count: 21;
   --card: rgba(255, 255, 255, 0.88);
   --card-strong: rgba(255, 255, 255, 0.97);
   --ink: #122424;
@@ -286,7 +291,7 @@ button {
 }
 
 .reference-card {
-  width: 540px;
+  width: var(--reference-card-width);
   border-radius: var(--radius-lg);
   padding: 14px;
   background: var(--card-strong);
@@ -312,10 +317,10 @@ button {
 }
 
 .lane-grid {
-  min-width: calc((540px * 6) + (16px * 5));
+  min-width: calc((var(--video-card-width) * var(--lane-slot-count)) + (var(--lane-gap) * (var(--lane-slot-count) - 1)));
   display: grid;
-  grid-template-columns: repeat(6, 540px);
-  gap: 16px;
+  grid-template-columns: repeat(var(--lane-slot-count), var(--video-card-width));
+  gap: var(--lane-gap);
   justify-content: start;
 }
 
@@ -340,9 +345,9 @@ button {
 
 .video-frame {
   position: relative;
-  width: 512px;
-  height: 512px;
-  min-height: 512px;
+  width: var(--video-frame-size);
+  height: var(--video-frame-size);
+  min-height: var(--video-frame-size);
   border-radius: 18px;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(10, 106, 109, 0.22), rgba(18, 36, 36, 0.78));
