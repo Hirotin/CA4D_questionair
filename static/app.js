@@ -318,7 +318,6 @@ function createPreloadVideoElement(slot) {
   video.playsInline = true;
   video.preload = "auto";
   video.disablePictureInPicture = true;
-  video.crossOrigin = "anonymous";
   video.hidden = true;
   video.src = descriptor.url;
   moveVideoToPreloadBin(video);
@@ -891,7 +890,6 @@ function createFileVideoController(card, descriptor) {
   fileVideo.playsInline = true;
   fileVideo.preload = "auto";
   fileVideo.disablePictureInPicture = true;
-  fileVideo.crossOrigin = "anonymous";
   placeholder.hidden = fileVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 
   if (!fileVideo.currentSrc || fileVideo.currentSrc !== descriptor.url) {
