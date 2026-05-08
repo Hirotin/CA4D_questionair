@@ -30,7 +30,7 @@
   },
   "videoStorage": {
     "provider": "r2",
-    "publicBaseUrl": "",
+    "publicBaseUrl": "https://pub-d59f91e9afbd4a4fb7ceea0a9d7c09bb.r2.dev",
     "publicBaseUrlEnv": "SURVEY_VIDEO_PUBLIC_BASE_URL"
   },
   "appsScriptSync": {
