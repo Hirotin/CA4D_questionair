@@ -190,6 +190,15 @@ function enableWheelHorizontalScroll() {
   );
 }
 
+function resetLaneScrollPosition() {
+  const scroller = elements.laneScroll;
+  if (!scroller) {
+    return;
+  }
+
+  scroller.scrollLeft = 0;
+}
+
 function getVideoDescriptor(video) {
   if (!video) {
     return { type: "missing", url: "" };
@@ -1032,6 +1041,7 @@ function renderVideoGrid() {
   runtime.playbackToken = playbackToken;
   runtime.autoplayWarningShown = false;
   cleanupMediaControllers();
+  resetLaneScrollPosition();
   elements.videoGrid.innerHTML = "";
 
   state.slots.forEach((slot) => {
@@ -1254,6 +1264,7 @@ async function submitSurvey() {
 
 async function enterQuestionIntro() {
   cleanupMediaControllers();
+  resetLaneScrollPosition();
   if (elements.videoGrid) {
     elements.videoGrid.innerHTML = "";
   }
