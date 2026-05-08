@@ -4,9 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
-import json
 import os
-import re
 import sys
 import zipfile
 from pathlib import Path
@@ -17,116 +15,59 @@ PROJECT_DIR = SCRIPT_DIR.parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-def sanitize_method_name(source_name: str) -> str:
-    candidate = str(source_name).strip()
-    if candidate.lower().endswith(".mp4"):
-        candidate = candidate[:-4]
-    return candidate or "Method"
+
+MAPPING_SUFFIX = "_mapping.csv"
+VIDEO_GROUP = "R2-20260508-ALL-LATEST"
 
 
-def split_sample_folder(folder_name: str) -> tuple[str, str]:
-    parts = folder_name.split("_")
-    if len(parts) >= 2 and parts[0].isdigit():
-        return parts[0], folder_name
-    return folder_name, folder_name
-
-
-def build_manifest_index(zf: zipfile.ZipFile) -> dict[str, dict]:
-    manifests: dict[str, dict] = {}
+def load_mapping_rows(zf: zipfile.ZipFile) -> list[dict[str, str]]:
+    mapping_name = ""
     for name in zf.namelist():
-        if not name.endswith("manifest.json"):
-            continue
-        try:
-            manifests[str(Path(name).parent)] = json.loads(zf.read(name))
-        except Exception:
-            continue
-    return manifests
-
-
-def build_method_overrides(zf: zipfile.ZipFile) -> dict[tuple[str, str], str]:
-    overrides: dict[tuple[str, str], str] = {}
-    mapping_name = None
-    for name in zf.namelist():
-        if name.endswith("20260508_updated_method_renders_mapping.csv"):
+        if name.lower().endswith(MAPPING_SUFFIX):
             mapping_name = name
             break
+
     if not mapping_name:
-        return overrides
+        raise RuntimeError("Could not find the mapping CSV inside the ZIP archive.")
 
     with zf.open(mapping_name) as handle:
         reader = csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8-sig"))
-        for row in reader:
-            shape_id = str(row.get("shape_id", "")).strip()
-            new_name = Path(str(row.get("new_name", "")).strip()).stem
-            source_name = sanitize_method_name(str(row.get("source_name", "")).strip())
-            if not shape_id or not new_name:
-                continue
-            method_index = new_name.split("_")[-1]
-            overrides[(shape_id, method_index)] = source_name
-    return overrides
+        return [{str(key): str(value or "") for key, value in row.items()} for row in reader]
 
 
-def build_catalog_row(
-    zip_member_name: str,
-    *,
-    object_key: str,
-    method_overrides: dict[tuple[str, str], str],
-    manifest_index: dict[str, dict],
-) -> dict[str, str]:
-    member_path = Path(zip_member_name)
-    stem = member_path.stem
-    parent_folder = member_path.parent.name
-    shape_id, sample_folder = split_sample_folder(parent_folder)
-    manifest = manifest_index.get(str(member_path.parent), {})
+def build_catalog_row(zip_prefix: str, row: dict[str, str]) -> dict[str, str]:
+    shape_id = str(row.get("shape_id", "")).strip()
+    sequence = str(row.get("sequence", "")).strip()
+    method_label = str(row.get("method_label", "")).strip()
+    file_name = str(row.get("file_name", "")).strip()
+    original_name = str(row.get("original_name", "")).strip()
+    object_key = f"{zip_prefix}/{file_name}"
 
-    stem_parts = stem.split("_")
-    if len(stem_parts) >= 3 and stem_parts[0].isdigit():
-        _, shape_id_from_stem, method_index = stem_parts[:3]
-        shape_id = shape_id_from_stem
-        method_name = method_overrides.get((shape_id, method_index), f"Method {method_index}")
-        video_code = f"R2-{shape_id}-{method_index}"
-        row_id = f"r2-{shape_id}-{method_index}"
-        title = f"R2 Sample / {shape_id} / {method_index}"
-        description = f"R2 uploaded sample for shape {shape_id}, method {method_index}."
-    else:
-        method_name = sanitize_method_name(stem)
-        video_code = f"R2-{shape_id}-{slugify(method_name)}"
-        row_id = f"r2-{shape_id}-{slugify(method_name)}"
-        title = f"R2 Sample / {shape_id} / {method_name}"
-        description = (
-            f"R2 uploaded sample for shape {shape_id}, method {method_name}."
-        )
+    title_parts = [f"Shape {shape_id}", f"Method {sequence}"]
+    if method_label:
+        title_parts.append(method_label)
 
-    prompt_text = ""
-    if isinstance(manifest, dict):
-        prompt_text = str(
-            manifest.get("prompt")
-            or manifest.get("text_prompt")
-            or manifest.get("caption")
-            or ""
-        ).strip()
+    description = f"Shape {shape_id}, method {sequence}"
+    if method_label:
+        description += f" ({method_label})"
+    if original_name:
+        description += f", source file {original_name}"
+    description += "."
 
     return {
-        "id": row_id,
-        "title": title,
+        "id": f"r2-{shape_id}-{sequence}",
+        "title": " / ".join(title_parts),
         "description": description,
         "object_key": object_key,
         "video_url": "",
         "source_label": "データベースランダム「Database Random」",
-        "video_group": "R2-16FRAME",
-        "video_code": video_code,
-        "method_name": method_name,
-        "sample_name": f"Shape {shape_id}",
-        "prompt_text": prompt_text,
+        "video_group": VIDEO_GROUP,
+        "video_code": f"{shape_id}-{sequence}",
+        "method_name": sequence,
+        "sample_name": shape_id,
+        "prompt_text": method_label,
         "is_active": "1",
     }
-
-
-def slugify(value: str) -> str:
-    text = str(value).strip().lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    text = text.strip("-")
-    return text or "video"
 
 
 def upload_zip(
@@ -159,25 +100,24 @@ def upload_zip(
     uploaded_count = 0
     catalog_rows: list[dict[str, str]] = []
     with zipfile.ZipFile(zip_path) as zf:
-        method_overrides = build_method_overrides(zf)
-        manifest_index = build_manifest_index(zf)
-        mp4_names = sorted(
-            name
-            for name in zf.namelist()
-            if name.lower().endswith(".mp4") and not name.endswith("/")
-        )
-        for member_name in mp4_names:
+        rows = load_mapping_rows(zf)
+        zip_prefix = Path(rows[0]["file_name"]).parent.as_posix() if "/" in rows[0]["file_name"] else Path(zf.namelist()[0]).parts[0]
+        root_prefix = Path(zf.namelist()[0]).parts[0]
+
+        for row in rows:
+            file_name = str(row.get("file_name", "")).strip()
+            if not file_name:
+                continue
+            member_name = f"{root_prefix}/{file_name}"
             object_key = member_name
             with zf.open(member_name) as source:
-                s3.upload_fileobj(source, bucket_name, object_key, ExtraArgs={"ContentType": "video/mp4"})
-            catalog_rows.append(
-                build_catalog_row(
-                    member_name,
-                    object_key=object_key,
-                    method_overrides=method_overrides,
-                    manifest_index=manifest_index,
+                s3.upload_fileobj(
+                    source,
+                    bucket_name,
+                    object_key,
+                    ExtraArgs={"ContentType": "video/mp4"},
                 )
-            )
+            catalog_rows.append(build_catalog_row(root_prefix, row))
             uploaded_count += 1
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -205,7 +145,7 @@ def upload_zip(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Upload all MP4 files in a ZIP archive to Cloudflare R2 and generate a catalog CSV."
+        description="Upload mapped MP4 files in a ZIP archive to Cloudflare R2 and generate a catalog CSV."
     )
     parser.add_argument("zip_path", help="Path to the ZIP archive containing MP4 files.")
     parser.add_argument(
@@ -220,7 +160,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output-csv",
-        default=str(PROJECT_DIR / "data" / "video_catalog_20260508_r2.csv"),
+        default=str(PROJECT_DIR / "data" / "video_catalog_20260508_all_latest_r2.csv"),
         help="Path to the generated catalog CSV.",
     )
     args = parser.parse_args()

@@ -1,8 +1,10 @@
 const state = {
   config: null,
   slots: [],
+  shapeRounds: [],
   answersByQuestion: [],
   currentQuestionIndex: 0,
+  currentShapeIndex: 0,
   sessionToken: "",
   phase: "start",
   startChecking: false,
@@ -351,27 +353,41 @@ async function synchronizeVideoPlayback(playbackToken) {
 }
 
 function getCurrentQuestion() {
-  return state.config.questions[state.currentQuestionIndex];
+  return state.config?.questions?.[state.currentQuestionIndex] || null;
 }
 
 function isSimilarityQuestion(question = getCurrentQuestion()) {
-  return question?.id === "similarity_to_video_1";
+  return question?.id === "similarity_to_video_0" || question?.id === "similarity_to_video_1";
 }
 
 function buildEmptyAnswers() {
-  return state.config.questions.map(() => ({}));
+  const questionCount = state.config?.questions?.length || 0;
+  const shapeCount = state.shapeRounds.length;
+  return Array.from({ length: questionCount }, () =>
+    Array.from({ length: shapeCount }, () => ({})),
+  );
 }
 
 function resetQuestionFlow() {
   state.currentQuestionIndex = 0;
+  state.currentShapeIndex = 0;
   state.answersByQuestion = buildEmptyAnswers();
+  syncSlotsFromCurrentShape();
 }
 
-function setSlots(resolvedSlots) {
-  state.slots = resolvedSlots.map((slot) => ({
-    ...slot,
-    loading: false,
+function setShapeRounds(shapeRounds) {
+  state.shapeRounds = shapeRounds.map((shapeRound) => ({
+    ...shapeRound,
+    slots: (shapeRound.slots || []).map((slot) => ({ ...slot, loading: false })),
   }));
+  syncSlotsFromCurrentShape();
+}
+
+function syncSlotsFromCurrentShape() {
+  const currentShapeRound = getCurrentShapeRound();
+  state.slots = currentShapeRound
+    ? currentShapeRound.slots.map((slot) => ({ ...slot, loading: false }))
+    : [];
   if (elements.videoGrid) {
     elements.videoGrid.style.setProperty(
       "--lane-slot-count",
@@ -380,8 +396,12 @@ function setSlots(resolvedSlots) {
   }
 }
 
+function getCurrentShapeRound() {
+  return state.shapeRounds[state.currentShapeIndex] || null;
+}
+
 function getCurrentAnswerMap() {
-  return state.answersByQuestion[state.currentQuestionIndex] || {};
+  return state.answersByQuestion[state.currentQuestionIndex]?.[state.currentShapeIndex] || {};
 }
 
 function getRatingForSlot(slotIndex) {
@@ -390,7 +410,13 @@ function getRatingForSlot(slotIndex) {
 }
 
 function setRatingForCurrentQuestion(slotIndex, rating) {
-  state.answersByQuestion[state.currentQuestionIndex][slotIndex] = rating;
+  if (!state.answersByQuestion[state.currentQuestionIndex]) {
+    state.answersByQuestion[state.currentQuestionIndex] = [];
+  }
+  if (!state.answersByQuestion[state.currentQuestionIndex][state.currentShapeIndex]) {
+    state.answersByQuestion[state.currentQuestionIndex][state.currentShapeIndex] = {};
+  }
+  state.answersByQuestion[state.currentQuestionIndex][state.currentShapeIndex][slotIndex] = rating;
 }
 
 function getAnsweredCountForCurrentQuestion() {
@@ -398,7 +424,15 @@ function getAnsweredCountForCurrentQuestion() {
 }
 
 function isLastQuestion() {
-  return state.currentQuestionIndex === state.config.questions.length - 1;
+  return state.currentQuestionIndex === (state.config?.questions?.length || 1) - 1;
+}
+
+function isLastShapeForQuestion() {
+  return state.currentShapeIndex === state.shapeRounds.length - 1;
+}
+
+function isLastSurveyStep() {
+  return isLastQuestion() && isLastShapeForQuestion();
 }
 
 function getUserName() {
@@ -826,10 +860,16 @@ async function renderReferencePanel() {
     return;
   }
 
-  const referenceSlot = state.slots.find((slot) => slot.slotIndex === 0) || state.slots[0];
-  if (!referenceSlot) {
+  const currentShapeRound = getCurrentShapeRound();
+  if (!currentShapeRound?.referenceVideo) {
     return;
   }
+
+  const referenceSlot = {
+    slotIndex: currentShapeRound.referenceSlotIndex ?? 0,
+    slotLabel: currentShapeRound.referenceSlotLabel || state.config.referenceSlotLabel || bilingual("動画0", "Video 0"),
+    video: currentShapeRound.referenceVideo,
+  };
 
   const card = createReferenceCard(referenceSlot);
   elements.referencePanel.appendChild(card);
@@ -911,6 +951,10 @@ function highlightMissingRatings() {
 
 function renderQuestionState() {
   const question = getCurrentQuestion();
+  const currentShapeRound = getCurrentShapeRound();
+  if (!question || !currentShapeRound) {
+    return;
+  }
   elements.questionCounter.textContent = bilingual(
     `質問 ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
     `Question ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
@@ -923,9 +967,13 @@ function renderQuestionState() {
       bilingual("ポジティブ", "Positive");
     elements.scaleLegend.textContent = `1 = ${negativeLabel} / 5 = ${positiveLabel}`;
   }
-  elements.nextQuestion.textContent = isLastQuestion()
-    ? bilingual("回答を送信", "Submit Responses")
-    : bilingual("次の質問", "Next Question");
+  if (isLastSurveyStep()) {
+    elements.nextQuestion.textContent = bilingual("回答を送信", "Submit Responses");
+  } else if (isLastShapeForQuestion()) {
+    elements.nextQuestion.textContent = bilingual("次の質問へ", "Next Question");
+  } else {
+    elements.nextQuestion.textContent = bilingual("次の形状へ", "Next Shape");
+  }
   state.slots.forEach(updateVideoCardRating);
   updateProgress();
   void renderReferencePanel();
@@ -933,13 +981,16 @@ function renderQuestionState() {
 
 function updateProgress() {
   const answeredCount = getAnsweredCountForCurrentQuestion();
-  elements.progressValue.textContent = `Q${state.currentQuestionIndex + 1} / ${state.config.questions.length}`;
+  const shapeCount = state.shapeRounds.length || 1;
+  const totalSteps = (state.config?.questions?.length || 1) * shapeCount;
+  const currentStep = (state.currentQuestionIndex * shapeCount) + state.currentShapeIndex + 1;
+  elements.progressValue.textContent = `Q${state.currentQuestionIndex + 1} / ${state.config.questions.length} · S${state.currentShapeIndex + 1} / ${shapeCount}`;
   elements.progressNote.textContent = bilingual(
-    `${answeredCount} / ${state.slots.length} 回答済み`,
-    `${answeredCount} / ${state.slots.length} answered`,
+    `形状 ${state.currentShapeIndex + 1} / ${shapeCount} ・ ${answeredCount} / ${state.slots.length} 回答済み`,
+    `Shape ${state.currentShapeIndex + 1} / ${shapeCount} · ${answeredCount} / ${state.slots.length} answered`,
   );
-  const progressRatio = state.config.questions.length
-    ? (state.currentQuestionIndex + 1) / state.config.questions.length
+  const progressRatio = totalSteps
+    ? currentStep / totalSteps
     : 0;
   if (elements.progressFill) {
     elements.progressFill.style.width = `${Math.max(0, Math.min(progressRatio, 1)) * 100}%`;
@@ -952,8 +1003,8 @@ function validateCurrentQuestion() {
   if (missingCount > 0) {
     showToast(
       bilingual(
-        "6本すべての動画に数字を選択してから進んでください。",
-        "Select a number for all six videos before proceeding."
+        `この形状の ${state.slots.length} 本すべてに数字を選択してから進んでください。`,
+        `Select a number for all ${state.slots.length} videos in this shape before proceeding.`
       ),
       4200,
     );
@@ -966,22 +1017,28 @@ function buildSubmissionPayload() {
   const responses = [];
 
   state.config.questions.forEach((question, questionIndex) => {
-    const answers = state.answersByQuestion[questionIndex] || {};
-    state.slots.forEach((slot) => {
-      const rating = answers[slot.slotIndex];
-      if (!Number.isInteger(rating)) {
-        throw new Error(bilingual("未回答の設問があります。すべての動画を評価してください。", "Some questions are still unanswered. Rate every video."));
-      }
-      responses.push({
-        questionId: question.id,
-        questionIndex,
-        questionText: question.text,
-        slotIndex: slot.slotIndex,
-        slotLabel: slot.slotLabel,
-        mode: slot.mode,
-        modeLabel: slot.modeLabel,
-        rating,
-        video: slot.video,
+    const answerSets = state.answersByQuestion[questionIndex] || [];
+    state.shapeRounds.forEach((shapeRound, shapeIndex) => {
+      const answers = answerSets[shapeIndex] || {};
+      shapeRound.slots.forEach((slot) => {
+        const rating = answers[slot.slotIndex];
+        if (!Number.isInteger(rating)) {
+          throw new Error(bilingual("未回答の設問があります。すべての動画を評価してください。", "Some questions are still unanswered. Rate every video."));
+        }
+        responses.push({
+          questionId: question.id,
+          questionIndex,
+          questionText: question.text,
+          shapeIndex,
+          shapeId: shapeRound.shapeId,
+          shapeLabel: shapeRound.shapeLabel,
+          slotIndex: slot.slotIndex,
+          slotLabel: slot.slotLabel,
+          mode: slot.mode,
+          modeLabel: slot.modeLabel,
+          rating,
+          video: slot.video,
+        });
       });
     });
   });
@@ -1049,7 +1106,7 @@ async function runStartReadinessCheck() {
       }),
     });
     state.sessionToken = String(response.sessionToken || "");
-    setSlots(response.slots || []);
+    setShapeRounds(response.shapeRounds || []);
     resetQuestionFlow();
     const message =
       response.message ||
@@ -1112,12 +1169,19 @@ async function handleNextQuestion() {
     return;
   }
 
-  if (isLastQuestion()) {
+  if (isLastSurveyStep()) {
     await submitSurvey();
     return;
   }
 
-  state.currentQuestionIndex += 1;
+  if (isLastShapeForQuestion()) {
+    state.currentQuestionIndex += 1;
+    state.currentShapeIndex = 0;
+  } else {
+    state.currentShapeIndex += 1;
+  }
+  syncSlotsFromCurrentShape();
+  renderVideoGrid();
   renderQuestionState();
 }
 
@@ -1125,7 +1189,7 @@ async function bootstrap() {
   try {
     const payload = await fetchJson("/api/bootstrap");
     state.config = payload;
-    setSlots(payload.slotsResolved || []);
+    setShapeRounds(payload.shapeRounds || []);
     resetQuestionFlow();
     setStartReadinessStatus(
       bilingual(

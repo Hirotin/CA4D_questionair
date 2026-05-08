@@ -1,7 +1,7 @@
 {
   "title": "動画アンケートスタジオ「Video Survey Studio」",
-  "subtitle": "21本の動画を横スクロールで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare twenty-one videos in a horizontally scrollable row and rate each one on a five-point scale.」動画1は固定表示、動画2〜21はデータベースからランダム抽選されます。「Video 1 is fixed, and Videos 2 to 21 are randomly sampled from the database.」",
-  "slots": 21,
+  "subtitle": "1つの質問につき7形状を順番に評価し、各形状では20手法の動画を横スクロールで比較します。「For each question, you will rate seven shapes in sequence, comparing twenty method videos per shape in a horizontally scrollable row.」動画の並び順は形状ごとにランダムです。「The twenty videos are shuffled for each shape.」",
+  "slots": 20,
   "scaleLabels": ["1", "2", "3", "4", "5"],
   "scaleHints": [
     "ネガティブ「Negative」",
@@ -41,14 +41,19 @@
     "tokenEnv": "SURVEY_APPS_SCRIPT_TOKEN",
     "timeoutSeconds": 15
   },
+  "shapeSurvey": {
+    "shapeOrder": ["1013", "1047", "1143", "1189", "1230", "1232", "1445"],
+    "referenceMethodCode": "0011",
+    "referenceSlotLabel": "動画0「Video 0」"
+  },
   "questions": [
     {
       "id": "naturalness",
       "text": "動きが自然かどうか「Please rate the naturalness of the motion」"
     },
     {
-      "id": "similarity_to_video_1",
-      "text": "動画1とどれだけ動きが近いか「Please rate the similarity of the motion compared to Video 1」"
+      "id": "similarity_to_video_0",
+      "text": "動画0とどれだけ近いか「Please rate the similarity compared to Video 0」"
     },
     {
       "id": "shape_consistency",
@@ -63,22 +68,10 @@
       "text": "テキスト整合性「Please rate the text alignment」"
     }
   ],
-  "fixedSlotVideo": {
-    "id": "r2-1013-sc4d-fp-front-right60",
-    "title": "R2 Sample / 1013 / sc4d_fp_front-right60",
-    "description": "R2 uploaded sample for shape 1013, method sc4d_fp_front-right60.",
-    "objectKey": "16frame/1013_1013_fa9f51beb7634443be3fce568b66af73_9_offset0_0000-0095_longseq_f0080-0095_np16/sc4d_fp_front-right60.mp4",
-    "sourceLabel": "固定動画「Fixed Video」",
-    "videoGroup": "R2-16FRAME",
-    "videoCode": "R2-1013-sc4d-fp-front-right60",
-    "methodName": "sc4d_fp_front-right60",
-    "sampleName": "Shape 1013",
-    "promptText": ""
-  },
   "randomVideoDatabase": {
-    "path": "data/random_video_catalog_combined_r2.sqlite3",
+    "path": "data/random_video_catalog_20260508_all_latest_r2.sqlite3",
     "catalogCsvPaths": [
-      "data/video_catalog_combined_r2_random.csv"
+      "data/video_catalog_20260508_all_latest_r2.csv"
     ],
     "seedVideos": []
   }
