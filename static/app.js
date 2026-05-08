@@ -388,6 +388,14 @@ function clearPlaybackSyncLoop() {
   }
 }
 
+function primePlaybackControllers() {
+  getPlaybackControllers().forEach((controller) => {
+    Promise.resolve(controller.play()).catch((error) => {
+      console.debug("Immediate playback prime failed", error);
+    });
+  });
+}
+
 function destroyReferenceController() {
   if (!runtime.referenceController) {
     return;
@@ -499,6 +507,53 @@ function isSimilarityQuestion(question = getCurrentQuestion()) {
   return question?.id === "similarity_to_video_0" || question?.id === "similarity_to_video_1";
 }
 
+function getScaleHintsForQuestion(question = getCurrentQuestion()) {
+  const questionId = question?.id || "";
+  if (questionId === "naturalness") {
+    return [
+      bilingual("とても不自然", "Very unnatural"),
+      bilingual("やや不自然", "Somewhat unnatural"),
+      bilingual("どちらでもない", "Neutral"),
+      bilingual("やや自然", "Somewhat natural"),
+      bilingual("とても自然", "Very natural"),
+    ];
+  }
+  if (questionId === "similarity_to_video_0" || questionId === "similarity_to_video_1") {
+    return [
+      bilingual("まったく近くない", "Very different"),
+      bilingual("あまり近くない", "Somewhat different"),
+      bilingual("どちらでもない", "Neutral"),
+      bilingual("やや近い", "Somewhat similar"),
+      bilingual("とても近い", "Very similar"),
+    ];
+  }
+  if (questionId === "shape_consistency") {
+    return [
+      bilingual("とても不一致", "Very inconsistent"),
+      bilingual("やや不一致", "Somewhat inconsistent"),
+      bilingual("どちらでもない", "Neutral"),
+      bilingual("やや一貫している", "Somewhat consistent"),
+      bilingual("とても一貫している", "Very consistent"),
+    ];
+  }
+  if (questionId === "text_alignment") {
+    return [
+      bilingual("まったく整合していない", "Very misaligned"),
+      bilingual("あまり整合していない", "Somewhat misaligned"),
+      bilingual("どちらでもない", "Neutral"),
+      bilingual("やや整合している", "Somewhat aligned"),
+      bilingual("とても整合している", "Very aligned"),
+    ];
+  }
+  return state.config?.scaleHints || [
+    bilingual("低い", "Low"),
+    bilingual("やや低い", "Somewhat low"),
+    bilingual("普通", "Neutral"),
+    bilingual("やや高い", "Somewhat high"),
+    bilingual("高い", "High"),
+  ];
+}
+
 function buildEmptyAnswers() {
   const questionCount = state.config?.questions?.length || 0;
   const shapeCount = state.shapeRounds.length;
@@ -519,6 +574,17 @@ function resetQuestionFlow() {
 
 function setShapeRounds(shapeRounds) {
   runtime.preparedShapeRounds.clear();
+  runtime.preloadedFileVideos.forEach((video) => {
+    try {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      video.remove();
+    } catch (error) {
+      console.debug("Failed to reset preloaded video", error);
+    }
+  });
+  runtime.preloadedFileVideos.clear();
   state.shapeRounds = shapeRounds.map((shapeRound) => ({
     ...shapeRound,
     slots: (shapeRound.slots || []).map((slot) => ({ ...slot, loading: false })),
@@ -696,10 +762,11 @@ function createVideoCard(slot) {
   const card = document.createElement("article");
   card.className = "video-card";
   card.dataset.slotIndex = String(slot.slotIndex);
+  const scaleHints = getScaleHintsForQuestion();
   const ratingOptions = state.config.scaleLabels
     .map(
       (label, index) => `
-        <label class="rating-option" title="${state.config.scaleHints[index]}">
+        <label class="rating-option" data-rating-index="${index}" title="${scaleHints[index] || ""}">
           <input
             type="radio"
             name="rating-${slot.slotIndex}"
@@ -767,19 +834,10 @@ function createUnavailableController(card, message) {
   };
 }
 
-function createFileVideoController(card, descriptor, slot, { reusePreloaded = true } = {}) {
+function createFileVideoController(card, descriptor) {
   const placeholder = card.querySelector('[data-role="placeholder"]');
-  let fileVideo = card.querySelector('[data-role="video"]');
+  const fileVideo = card.querySelector('[data-role="video"]');
   const youtubeSurface = card.querySelector('[data-role="youtube-player"]');
-  const videoKey = getVideoCacheKey(slot?.video);
-  const cachedVideo =
-    reusePreloaded && videoKey ? runtime.preloadedFileVideos.get(videoKey) || null : null;
-  const shouldCacheVideo = reusePreloaded && Boolean(videoKey);
-  if (cachedVideo && cachedVideo !== fileVideo) {
-    cachedVideo.setAttribute("data-role", "video");
-    fileVideo.replaceWith(cachedVideo);
-    fileVideo = cachedVideo;
-  }
   const hidePlaceholder = () => {
     placeholder.hidden = true;
     fileVideo.removeEventListener("loadeddata", hidePlaceholder);
@@ -802,13 +860,10 @@ function createFileVideoController(card, descriptor, slot, { reusePreloaded = tr
   fileVideo.crossOrigin = "anonymous";
   placeholder.hidden = fileVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 
-  if (!cachedVideo || !fileVideo.currentSrc || fileVideo.currentSrc !== descriptor.url) {
+  if (!fileVideo.currentSrc || fileVideo.currentSrc !== descriptor.url) {
     placeholder.hidden = false;
     fileVideo.src = descriptor.url;
     fileVideo.load();
-  }
-  if (shouldCacheVideo && videoKey && !runtime.preloadedFileVideos.has(videoKey)) {
-    runtime.preloadedFileVideos.set(videoKey, fileVideo);
   }
 
   fileVideo.addEventListener("loadeddata", hidePlaceholder, { once: true });
@@ -850,12 +905,8 @@ function createFileVideoController(card, descriptor, slot, { reusePreloaded = tr
       } catch (error) {
         console.debug("Failed to reset local video during destroy", error);
       }
-      if (shouldCacheVideo) {
-        moveVideoToPreloadBin(fileVideo);
-      } else {
-        fileVideo.removeAttribute("src");
-        fileVideo.load();
-      }
+      fileVideo.removeAttribute("src");
+      fileVideo.load();
     },
   };
 }
@@ -1010,7 +1061,7 @@ function createYouTubeController(card, descriptor, playbackToken, slotIndex) {
   };
 }
 
-function createMediaController(slot, card, playbackToken, options = {}) {
+function createMediaController(slot, card, playbackToken) {
   const descriptor = getVideoDescriptor(slot.video);
   if (descriptor.type === "missing") {
     return createUnavailableController(card, bilingual("動画情報が見つかりません。", "Video information was not found."));
@@ -1020,7 +1071,7 @@ function createMediaController(slot, card, playbackToken, options = {}) {
     return createYouTubeController(card, descriptor, playbackToken, slot.slotIndex);
   }
 
-  return createFileVideoController(card, descriptor, slot, options);
+  return createFileVideoController(card, descriptor);
 }
 
 function createReferenceCard(slot) {
@@ -1136,6 +1187,16 @@ function clearMissingState(slotIndex) {
   }
 }
 
+function updateScaleHintsForVisibleCards(question = getCurrentQuestion()) {
+  const scaleHints = getScaleHintsForQuestion(question);
+  elements.videoGrid
+    ?.querySelectorAll(".rating-option")
+    .forEach((option) => {
+      const ratingIndex = Number(option.dataset.ratingIndex || "0");
+      option.title = scaleHints[ratingIndex] || "";
+    });
+}
+
 function highlightMissingRatings() {
   let missingCount = 0;
   state.slots.forEach((slot) => {
@@ -1163,15 +1224,17 @@ function renderQuestionState() {
   );
   elements.questionText.textContent = question.text;
   if (elements.scaleLegend) {
-    const negativeLabel = state.config.scaleHints?.[0] || bilingual("ネガティブ", "Negative");
+    const scaleHints = getScaleHintsForQuestion(question);
+    const negativeLabel = scaleHints[0] || bilingual("低い", "Low");
     const positiveLabel =
-      state.config.scaleHints?.[state.config.scaleHints.length - 1] ||
-      bilingual("ポジティブ", "Positive");
+      scaleHints[scaleHints.length - 1] ||
+      bilingual("高い", "High");
     elements.scaleLegend.textContent = `1 = ${negativeLabel} / 5 = ${positiveLabel}`;
   }
   if (state.advancing) {
     elements.nextQuestion.textContent = bilingual("読み込み中...", "Loading...");
     state.slots.forEach(updateVideoCardRating);
+    updateScaleHintsForVisibleCards(question);
     updateProgress();
     void renderReferencePanel();
     return;
@@ -1184,6 +1247,7 @@ function renderQuestionState() {
     elements.nextQuestion.textContent = bilingual("次の形状へ", "Next Shape");
   }
   state.slots.forEach(updateVideoCardRating);
+  updateScaleHintsForVisibleCards(question);
   updateProgress();
   void renderReferencePanel();
 }
@@ -1333,11 +1397,11 @@ async function beginCurrentQuestion() {
     return;
   }
 
-  await ensureShapeRoundPrepared(getCurrentShapeRound());
   state.phase = "survey";
   renderAppPhase();
   renderVideoGrid();
   renderQuestionState();
+  primePlaybackControllers();
 }
 
 async function runStartReadinessCheck() {
@@ -1440,9 +1504,9 @@ async function handleNextQuestion() {
 
     state.currentShapeIndex += 1;
     syncSlotsFromCurrentShape();
-    await ensureShapeRoundPrepared(getCurrentShapeRound());
     renderVideoGrid();
     renderQuestionState();
+    primePlaybackControllers();
   } finally {
     state.advancing = false;
     if (state.phase === "survey") {
