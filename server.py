@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import random
+import re
 import secrets
 import sqlite3
 import smtplib
@@ -58,6 +59,31 @@ def bilingual(japanese: str, english: str) -> str:
 def load_json_file(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def load_csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        return [{str(key): str(value or "") for key, value in row.items()} for row in reader]
+
+
+def slugify_identifier(value: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9]+", "-", str(value).strip()).strip("-").lower()
+    return normalized or "video"
+
+
+def choose_catalog_identifier(row: dict[str, str]) -> str:
+    for key in ("id", "video_code", "object_key", "video_url", "title"):
+        candidate = str(row.get(key, "")).strip()
+        if candidate:
+            return slugify_identifier(candidate)
+    raise AppError(
+        bilingual(
+            "CSV 行に id / video_code / object_key / video_url / title がありません。",
+            "CSV row is missing id / video_code / object_key / video_url / title.",
+        ),
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+    )
 
 
 def get_video_storage_settings(config: dict[str, Any]) -> dict[str, str]:
@@ -188,11 +214,31 @@ def load_config() -> dict[str, Any]:
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR,
         )
-    if not isinstance(random_db["seedVideos"], list) or not random_db["seedVideos"]:
+    if not isinstance(random_db["seedVideos"], list):
         raise AppError(
             bilingual(
-                "randomVideoDatabase.seedVideos は 1 件以上必要です。",
-                "randomVideoDatabase.seedVideos must contain at least one entry.",
+                "randomVideoDatabase.seedVideos は配列で指定してください。",
+                "randomVideoDatabase.seedVideos must be an array.",
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
+
+    catalog_csv_paths = random_db.get("catalogCsvPaths", [])
+    if catalog_csv_paths is None:
+        catalog_csv_paths = []
+    if not isinstance(catalog_csv_paths, list):
+        raise AppError(
+            bilingual(
+                "randomVideoDatabase.catalogCsvPaths は配列で指定してください。",
+                "randomVideoDatabase.catalogCsvPaths must be an array.",
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
+    if not random_db["seedVideos"] and not catalog_csv_paths:
+        raise AppError(
+            bilingual(
+                "randomVideoDatabase.seedVideos か randomVideoDatabase.catalogCsvPaths のどちらかに 1 件以上必要です。",
+                "At least one entry is required in randomVideoDatabase.seedVideos or randomVideoDatabase.catalogCsvPaths.",
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR,
         )
@@ -498,6 +544,61 @@ def get_database_path(config: dict[str, Any]) -> Path:
     return database_path
 
 
+def get_catalog_csv_paths(config: dict[str, Any]) -> list[Path]:
+    raw_paths = config["randomVideoDatabase"].get("catalogCsvPaths", [])
+    return [(BASE_DIR / str(path)).resolve() for path in raw_paths]
+
+
+def normalize_catalog_csv_row(
+    raw_row: dict[str, str], *, public_base_url: str, default_source_label: str
+) -> dict[str, str]:
+    fallback_identifier = choose_catalog_identifier(raw_row)
+    entry = {
+        "id": str(raw_row.get("id", "")).strip() or fallback_identifier,
+        "title": str(raw_row.get("title", "")).strip()
+        or str(raw_row.get("sample_name", "")).strip()
+        or str(raw_row.get("video_code", "")).strip()
+        or fallback_identifier,
+        "description": str(raw_row.get("description", "")).strip(),
+        "objectKey": str(raw_row.get("object_key", "")).strip(),
+        "url": str(raw_row.get("video_url", "")).strip(),
+        "sourceLabel": str(raw_row.get("source_label", "")).strip() or default_source_label,
+        "videoGroup": str(raw_row.get("video_group", "")).strip(),
+        "videoCode": str(raw_row.get("video_code", "")).strip() or fallback_identifier.upper(),
+        "methodName": str(raw_row.get("method_name", "")).strip(),
+        "sampleName": str(raw_row.get("sample_name", "")).strip(),
+        "promptText": str(raw_row.get("prompt_text", "")).strip(),
+    }
+    return normalize_video_entry(
+        entry,
+        default_source_label=default_source_label,
+        public_base_url=public_base_url,
+    )
+
+
+def load_catalog_csv_seed_videos(config: dict[str, Any]) -> list[dict[str, str]]:
+    storage_settings = get_video_storage_settings(config)
+    videos: list[dict[str, str]] = []
+    for csv_path in get_catalog_csv_paths(config):
+        if not csv_path.exists():
+            raise AppError(
+                bilingual(
+                    f"動画カタログ CSV が見つかりません: {csv_path}",
+                    f"Video catalog CSV was not found: {csv_path}",
+                ),
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+        for raw_row in load_csv_rows(csv_path):
+            videos.append(
+                normalize_catalog_csv_row(
+                    raw_row,
+                    public_base_url=storage_settings["publicBaseUrl"],
+                    default_source_label=DATABASE_SOURCE_LABEL,
+                )
+            )
+    return videos
+
+
 def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
     storage_settings = get_video_storage_settings(config)
     seed_videos = [
@@ -508,6 +609,7 @@ def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
         )
         for video in config["randomVideoDatabase"]["seedVideos"]
     ]
+    seed_videos.extend(load_catalog_csv_seed_videos(config))
     database_path = get_database_path(config)
 
     with _database_lock:

@@ -76,44 +76,10 @@
     "promptText": "Demo prompt for fixed reference video."
   },
   "randomVideoDatabase": {
-    "path": "data/random_video_catalog.sqlite3",
-    "seedVideos": [
-      {
-        "id": "db-ice-to-water",
-        "title": "DB Sample / Ice to Water",
-        "description": "データベース登録済みのサンプル動画です。「This is a sample video registered in the database.」",
-        "url": "/static/videos/completionany4d_ice_to_water.mp4",
-        "sourceLabel": "データベースランダム「Database Random」",
-        "videoGroup": "DEMO",
-        "videoCode": "DEMO-002",
-        "methodName": "Local Demo",
-        "sampleName": "Ice to Water",
-        "promptText": "Demo prompt for local sample video."
-      },
-      {
-        "id": "db-bush-to-flower",
-        "title": "DB Sample / Bush to Flower",
-        "description": "データベース登録済みのサンプル動画です。「This is a sample video registered in the database.」",
-        "url": "/static/videos/completionany4d_bush_bud_flower.mp4",
-        "sourceLabel": "データベースランダム「Database Random」",
-        "videoGroup": "DEMO",
-        "videoCode": "DEMO-003",
-        "methodName": "Local Demo",
-        "sampleName": "Bush to Flower",
-        "promptText": "Demo prompt for local sample video."
-      },
-      {
-        "id": "db-youtube-HJREWh_W90Q",
-        "title": "YouTube Random / HJREWh_W90Q",
-        "description": "データベース登録済みの YouTube ランダム動画です。「This is a YouTube random video registered in the database.」",
-        "url": "https://youtu.be/HJREWh_W90Q",
-        "sourceLabel": "データベースランダム「Database Random」",
-        "videoGroup": "DEMO",
-        "videoCode": "DEMO-004",
-        "methodName": "YouTube Demo",
-        "sampleName": "Random Sample 01",
-        "promptText": "Demo prompt for random YouTube video."
-      }
-    ]
+    "path": "data/random_video_catalog_20260508_r2.sqlite3",
+    "catalogCsvPaths": [
+      "data/video_catalog_20260508_r2.csv"
+    ],
+    "seedVideos": []
   }
 }

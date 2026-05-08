@@ -4,4 +4,4 @@ __pycache__/
 
 responses/
 data/video_links.csv
-data/random_video_catalog.sqlite3
+data/*.sqlite3

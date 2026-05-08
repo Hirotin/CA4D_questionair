@@ -81,6 +81,10 @@ export SURVEY_VIDEO_PUBLIC_BASE_URL='https://pub-xxxxxxxxxxxxxxxx.r2.dev'
 
 `object_key` を使うと、CSV や DB では `folder/sample.mp4` のようなキーだけ管理し、実際の再生URLはアプリ側で組み立てます。
 
+注意:
+- `r2.dev` を使う場合は、対象バケットの `Public Development URL` を `Enable` して公開アクセスを許可してください。
+- 本番用途は `Custom Domain` 推奨です。
+
 ## データベース
 
 ランダム動画は `data/random_video_catalog.sqlite3` を使います。サーバー起動時または初回アクセス時に自動作成され、[app_config.json](/Users/hiroki/.ssh/video-survey-app/data/app_config.json) の `randomVideoDatabase.seedVideos` を初期登録します。
@@ -101,6 +105,8 @@ export SURVEY_VIDEO_PUBLIC_BASE_URL='https://pub-xxxxxxxxxxxxxxxx.r2.dev'
 - `sample_name`
 - `prompt_text`
 - `is_active`
+
+`randomVideoDatabase.catalogCsvPaths` に CSV を列挙すると、そのファイル群も起動時に自動で DB へ取り込みます。大量動画ではこちらを主に使います。
 
 `url` / `objectKey` には次のような入れ方ができます。
 
@@ -183,6 +189,8 @@ python3 scripts/import_video_catalog_csv.py /path/to/video_catalog.csv
 ```
 
 `object_key` が入っている行は、`SURVEY_VIDEO_PUBLIC_BASE_URL` を使って再生URLへ変換されます。
+
+ZIP からそのまま `R2` へアップロードして、この形式の CSV も同時に作りたい場合は [scripts/upload_zip_to_r2.py](/Users/hiroki/.ssh/video-survey-app/scripts/upload_zip_to_r2.py) を使えます。
 
 ## 設問設定
 
