@@ -43,6 +43,23 @@
     "sheetUrlEnv": "SURVEY_GOOGLE_SHEET_URL",
     "timeoutSeconds": 15
   },
+  "resultsR2Archive": {
+    "enabled": false,
+    "bucket": "",
+    "bucketEnv": "R2_BUCKET_NAME",
+    "endpointUrl": "",
+    "endpointEnv": "R2_ENDPOINT_URL",
+    "accessKey": "",
+    "accessKeyEnv": "AWS_ACCESS_KEY_ID",
+    "secretKey": "",
+    "secretKeyEnv": "AWS_SECRET_ACCESS_KEY",
+    "sessionToken": "",
+    "sessionTokenEnv": "AWS_SESSION_TOKEN",
+    "prefix": "survey-results",
+    "prefixEnv": "SURVEY_RESULTS_R2_PREFIX",
+    "regionName": "auto",
+    "enabledEnv": "SURVEY_RESULTS_R2_ENABLED"
+  },
   "shapeSurvey": {
     "shapeOrder": ["1013", "1047", "1143", "1189", "1230", "1232", "1445"],
     "referenceMethodCode": "0011",

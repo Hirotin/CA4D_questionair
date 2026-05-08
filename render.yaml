@@ -3,7 +3,7 @@ services:
     name: ca4d-questionair
     runtime: python
     plan: free
-    buildCommand: "true"
+    buildCommand: pip install -r requirements.txt
     startCommand: python3 server.py
     healthCheckPath: /
     autoDeployTrigger: commit
@@ -14,7 +14,23 @@ services:
         sync: false
       - key: SURVEY_APPS_SCRIPT_TOKEN
         sync: false
+      - key: SURVEY_GOOGLE_SHEET_URL
+        sync: false
       - key: SURVEY_VIDEO_PUBLIC_BASE_URL
+        sync: false
+      - key: SURVEY_RESULTS_R2_ENABLED
+        sync: false
+      - key: SURVEY_RESULTS_R2_PREFIX
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_ENDPOINT_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_SESSION_TOKEN
         sync: false
       - key: SURVEY_SMTP_PASSWORD
         sync: false

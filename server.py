@@ -438,6 +438,73 @@ def get_apps_script_sync_context(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_results_r2_archive_settings(config: dict[str, Any]) -> dict[str, Any]:
+    raw_settings = config.get("resultsR2Archive")
+    if not isinstance(raw_settings, dict):
+        return {"enabled": False}
+
+    bucket_env_name = (
+        str(raw_settings.get("bucketEnv", "R2_BUCKET_NAME")).strip()
+        or "R2_BUCKET_NAME"
+    )
+    endpoint_env_name = (
+        str(raw_settings.get("endpointEnv", "R2_ENDPOINT_URL")).strip()
+        or "R2_ENDPOINT_URL"
+    )
+    access_key_env_name = (
+        str(raw_settings.get("accessKeyEnv", "AWS_ACCESS_KEY_ID")).strip()
+        or "AWS_ACCESS_KEY_ID"
+    )
+    secret_key_env_name = (
+        str(raw_settings.get("secretKeyEnv", "AWS_SECRET_ACCESS_KEY")).strip()
+        or "AWS_SECRET_ACCESS_KEY"
+    )
+    session_token_env_name = (
+        str(raw_settings.get("sessionTokenEnv", "AWS_SESSION_TOKEN")).strip()
+        or "AWS_SESSION_TOKEN"
+    )
+    prefix_env_name = (
+        str(raw_settings.get("prefixEnv", "SURVEY_RESULTS_R2_PREFIX")).strip()
+        or "SURVEY_RESULTS_R2_PREFIX"
+    )
+    enabled_env_name = (
+        str(raw_settings.get("enabledEnv", "SURVEY_RESULTS_R2_ENABLED")).strip()
+        or "SURVEY_RESULTS_R2_ENABLED"
+    )
+
+    bucket_env_value = os.environ.get(bucket_env_name, "").strip()
+    endpoint_env_value = os.environ.get(endpoint_env_name, "").strip()
+    access_key_env_value = os.environ.get(access_key_env_name, "").strip()
+    secret_key_env_value = os.environ.get(secret_key_env_name, "").strip()
+    enabled_env_value = os.environ.get(enabled_env_name, "").strip().lower()
+    env_requested_enable = enabled_env_value in {"1", "true", "yes", "on"}
+    env_archive_present = bool(
+        bucket_env_value
+        or endpoint_env_value
+        or access_key_env_value
+        or secret_key_env_value
+        or enabled_env_value
+    )
+
+    return {
+        "enabled": bool(raw_settings.get("enabled", False) or env_requested_enable or env_archive_present),
+        "bucket": str(raw_settings.get("bucket", "")).strip(),
+        "bucketEnv": bucket_env_name,
+        "endpointUrl": str(raw_settings.get("endpointUrl", "")).strip(),
+        "endpointEnv": endpoint_env_name,
+        "accessKey": str(raw_settings.get("accessKey", "")).strip(),
+        "accessKeyEnv": access_key_env_name,
+        "secretKey": str(raw_settings.get("secretKey", "")).strip(),
+        "secretKeyEnv": secret_key_env_name,
+        "sessionToken": str(raw_settings.get("sessionToken", "")).strip(),
+        "sessionTokenEnv": session_token_env_name,
+        "prefix": str(raw_settings.get("prefix", "survey-results")).strip().strip("/"),
+        "prefixEnv": prefix_env_name,
+        "regionName": str(raw_settings.get("regionName", "auto")).strip() or "auto",
+        "enabledEnv": enabled_env_name,
+    }
+
+
 def post_to_apps_script(*, settings: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     request = urllib.request.Request(
         settings["endpointUrl"],
@@ -1109,6 +1176,96 @@ def send_submission_email(
     return {"status": "sent", "message": bilingual(f"{settings['toAddress']} へメール送信しました。", f"Email was sent to {settings['toAddress']}.")}
 
 
+def upload_submission_csv_to_r2(
+    *,
+    config: dict[str, Any],
+    submission_id: str,
+    attachment_name: str,
+    csv_text: str,
+) -> dict[str, str]:
+    settings = get_results_r2_archive_settings(config)
+    if not settings["enabled"]:
+        return {"status": "skipped", "message": bilingual("R2 退避は無効です。", "R2 archival is disabled.")}
+
+    try:
+        import boto3
+    except Exception:
+        return {
+            "status": "failed",
+            "message": bilingual(
+                "R2 退避に必要な boto3 が未インストールです。",
+                "boto3 is required for R2 archival but is not installed.",
+            ),
+        }
+
+    bucket = os.environ.get(settings["bucketEnv"], "") or settings["bucket"]
+    endpoint_url = os.environ.get(settings["endpointEnv"], "") or settings["endpointUrl"]
+    access_key = os.environ.get(settings["accessKeyEnv"], "") or settings["accessKey"]
+    secret_key = os.environ.get(settings["secretKeyEnv"], "") or settings["secretKey"]
+    session_token = os.environ.get(settings["sessionTokenEnv"], "") or settings["sessionToken"]
+    prefix = os.environ.get(settings["prefixEnv"], "") or settings["prefix"]
+
+    missing: list[str] = []
+    if not bucket:
+        missing.append(settings["bucketEnv"])
+    if not endpoint_url:
+        missing.append(settings["endpointEnv"])
+    if not access_key:
+        missing.append(settings["accessKeyEnv"])
+    if not secret_key:
+        missing.append(settings["secretKeyEnv"])
+    if missing:
+        return {
+            "status": "skipped",
+            "message": bilingual(
+                f"R2 退避設定が不足しています: {', '.join(missing)}",
+                f"R2 archival settings are missing: {', '.join(missing)}",
+            ),
+        }
+
+    object_key = "/".join(
+        part for part in [prefix.strip("/"), f"{submission_id}_{attachment_name}"] if part
+    )
+
+    try:
+        client = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            aws_session_token=session_token or None,
+            region_name=settings["regionName"],
+        )
+        client.put_object(
+            Bucket=bucket,
+            Key=object_key,
+            Body=csv_text.encode("utf-8-sig"),
+            ContentType="text/csv; charset=utf-8",
+            CacheControl="no-store",
+            Metadata={
+                "submission-id": submission_id,
+                "file-name": attachment_name,
+            },
+        )
+    except Exception as error:
+        return {
+            "status": "failed",
+            "message": bilingual(
+                f"R2 退避に失敗しました: {error}",
+                f"R2 archival failed: {error}",
+            ),
+        }
+
+    return {
+        "status": "sent",
+        "message": bilingual(
+            f"R2 へ CSV を保存しました: {bucket}/{object_key}",
+            f"Saved the CSV to R2: {bucket}/{object_key}",
+        ),
+        "objectKey": object_key,
+    }
+
+
 def sync_submission_to_apps_script(
     *,
     config: dict[str, Any],
@@ -1483,6 +1640,12 @@ def save_submission_csv(payload: dict[str, Any], *, client_ip: str, user_agent: 
     per_submission_dir.mkdir(parents=True, exist_ok=True)
     (per_submission_dir / download_filename).write_text(csv_text, encoding="utf-8-sig", newline="")
 
+    results_r2_result = upload_submission_csv_to_r2(
+        config=config,
+        submission_id=submission_id,
+        attachment_name=download_filename,
+        csv_text=csv_text,
+    )
     mail_result = send_submission_email(
         config=config,
         submission_id=submission_id,
@@ -1502,6 +1665,8 @@ def save_submission_csv(payload: dict[str, Any], *, client_ip: str, user_agent: 
         "rowsWritten": len(validated["responses"]),
         "downloadFilename": download_filename,
         "submissionCsv": csv_text,
+        "resultsR2Status": results_r2_result["status"],
+        "resultsR2Message": results_r2_result["message"],
         "mailStatus": mail_result["status"],
         "mailMessage": mail_result["message"],
         "appsScriptStatus": apps_script_result["status"],
@@ -1601,6 +1766,8 @@ class SurveyRequestHandler(BaseHTTPRequestHandler):
                         "rowsWritten": result["rowsWritten"],
                         "downloadFilename": result["downloadFilename"],
                         "submissionCsv": result["submissionCsv"],
+                        "resultsR2Status": result["resultsR2Status"],
+                        "resultsR2Message": result["resultsR2Message"],
                         "mailStatus": result["mailStatus"],
                         "mailMessage": result["mailMessage"],
                         "appsScriptStatus": result["appsScriptStatus"],
