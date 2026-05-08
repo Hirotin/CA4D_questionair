@@ -8,6 +8,9 @@ const state = {
   sessionToken: "",
   phase: "start",
   startChecking: false,
+  introLoading: false,
+  introReady: false,
+  advancing: false,
   submitting: false,
 };
 
@@ -17,10 +20,14 @@ const runtime = {
   playbackToken: 0,
   youtubeApiPromise: null,
   autoplayWarningShown: false,
+  syncLoopId: 0,
+  preloadedFileVideos: new Map(),
+  preparedShapeRounds: new Map(),
 };
 
 const elements = {
   startStage: document.getElementById("start-stage"),
+  questionIntroStage: document.getElementById("question-intro-stage"),
   surveyStage: document.getElementById("survey-stage"),
   completionStage: document.getElementById("completion-stage"),
   progressValue: document.getElementById("progress-value"),
@@ -37,9 +44,12 @@ const elements = {
   accessPassword: document.getElementById("access-password"),
   startSurvey: document.getElementById("start-survey"),
   startReadinessStatus: document.getElementById("start-readiness-status"),
+  introQuestionText: document.getElementById("intro-question-text"),
+  beginQuestion: document.getElementById("begin-question"),
   nextQuestion: document.getElementById("next-question"),
   completionMessage: document.getElementById("completion-message"),
   toast: document.getElementById("toast"),
+  preloadBin: document.getElementById("preload-bin"),
 };
 
 function bilingual(japanese, english) {
@@ -283,6 +293,101 @@ function waitForFileVideoReady(video) {
   });
 }
 
+function getVideoCacheKey(video) {
+  if (!video) {
+    return "";
+  }
+  return String(video.id || video.videoCode || video.objectKey || video.url || "").trim();
+}
+
+function moveVideoToPreloadBin(video) {
+  if (!video || !elements.preloadBin) {
+    return;
+  }
+  video.hidden = true;
+  elements.preloadBin.appendChild(video);
+}
+
+function createPreloadVideoElement(slot) {
+  const descriptor = getVideoDescriptor(slot.video);
+  if (descriptor.type !== "file") {
+    return null;
+  }
+
+  const video = document.createElement("video");
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.disablePictureInPicture = true;
+  video.crossOrigin = "anonymous";
+  video.hidden = true;
+  video.src = descriptor.url;
+  moveVideoToPreloadBin(video);
+  video.load();
+  return video;
+}
+
+function ensureShapeRoundPrepared(shapeRound) {
+  if (!shapeRound) {
+    return Promise.resolve();
+  }
+
+  const cacheKey = String(shapeRound.shapeIndex);
+  if (runtime.preparedShapeRounds.has(cacheKey)) {
+    return runtime.preparedShapeRounds.get(cacheKey);
+  }
+
+  const promise = Promise.all(
+    shapeRound.slots.map((slot) => {
+      const videoKey = getVideoCacheKey(slot.video);
+      const descriptor = getVideoDescriptor(slot.video);
+      if (descriptor.type !== "file" || !videoKey) {
+        return Promise.resolve();
+      }
+
+      let video = runtime.preloadedFileVideos.get(videoKey);
+      if (!video) {
+        video = createPreloadVideoElement(slot);
+        if (!video) {
+          return Promise.resolve();
+        }
+        runtime.preloadedFileVideos.set(videoKey, video);
+      }
+      return waitForFileVideoReady(video);
+    }),
+  )
+    .then(() => shapeRound)
+    .catch((error) => {
+      runtime.preparedShapeRounds.delete(cacheKey);
+      throw error;
+    });
+
+  runtime.preparedShapeRounds.set(cacheKey, promise);
+  return promise;
+}
+
+function getUpcomingShapeRound() {
+  return state.shapeRounds[state.currentShapeIndex + 1] || null;
+}
+
+function warmUpcomingShapeRound() {
+  const upcomingShapeRound = getUpcomingShapeRound();
+  if (!upcomingShapeRound) {
+    return;
+  }
+  void ensureShapeRoundPrepared(upcomingShapeRound).catch((error) => {
+    console.debug("Failed to warm the upcoming shape round", error);
+  });
+}
+
+function clearPlaybackSyncLoop() {
+  if (runtime.syncLoopId) {
+    window.clearInterval(runtime.syncLoopId);
+    runtime.syncLoopId = 0;
+  }
+}
+
 function destroyReferenceController() {
   if (!runtime.referenceController) {
     return;
@@ -305,6 +410,7 @@ function getPlaybackControllers() {
 }
 
 function cleanupMediaControllers() {
+  clearPlaybackSyncLoop();
   destroyReferenceController();
   runtime.mediaControllers.forEach((controller) => {
     try {
@@ -350,6 +456,39 @@ async function synchronizeVideoPlayback(playbackToken) {
       }),
     ),
   );
+
+  clearPlaybackSyncLoop();
+  runtime.syncLoopId = window.setInterval(() => {
+    if (playbackToken !== runtime.playbackToken) {
+      clearPlaybackSyncLoop();
+      return;
+    }
+
+    const activeControllers = getPlaybackControllers().filter(
+      (controller) =>
+        typeof controller.getCurrentTime === "function" &&
+        typeof controller.seekTo === "function" &&
+        controller.canResync !== false,
+    );
+    if (activeControllers.length <= 1) {
+      return;
+    }
+
+    const masterTime = activeControllers[0].getCurrentTime();
+    if (!Number.isFinite(masterTime)) {
+      return;
+    }
+
+    activeControllers.slice(1).forEach((controller) => {
+      const currentTime = controller.getCurrentTime();
+      if (!Number.isFinite(currentTime)) {
+        return;
+      }
+      if (Math.abs(currentTime - masterTime) > 0.06) {
+        controller.seekTo(masterTime);
+      }
+    });
+  }, 250);
 }
 
 function getCurrentQuestion() {
@@ -372,10 +511,14 @@ function resetQuestionFlow() {
   state.currentQuestionIndex = 0;
   state.currentShapeIndex = 0;
   state.answersByQuestion = buildEmptyAnswers();
+  state.introLoading = false;
+  state.introReady = false;
+  state.advancing = false;
   syncSlotsFromCurrentShape();
 }
 
 function setShapeRounds(shapeRounds) {
+  runtime.preparedShapeRounds.clear();
   state.shapeRounds = shapeRounds.map((shapeRound) => ({
     ...shapeRound,
     slots: (shapeRound.slots || []).map((slot) => ({ ...slot, loading: false })),
@@ -501,11 +644,13 @@ function validateAccessPassword() {
 function renderAppPhase() {
   const bootstrapped = Boolean(state.config);
   const isStartPhase = state.phase === "start";
+  const isIntroPhase = state.phase === "questionIntro";
   const isSurveyPhase = state.phase === "survey";
   const isCompletedPhase = state.phase === "completed";
 
   document.body.dataset.phase = state.phase;
   elements.startStage.hidden = !isStartPhase;
+  elements.questionIntroStage.hidden = !isIntroPhase;
   elements.surveyStage.hidden = !isSurveyPhase;
   elements.completionStage.hidden = !isCompletedPhase;
 
@@ -521,8 +666,29 @@ function renderAppPhase() {
   if (elements.accessPassword) {
     elements.accessPassword.disabled = !isStartPhase || state.startChecking || !accessPasswordEnabled();
   }
+  if (elements.beginQuestion) {
+    elements.beginQuestion.disabled =
+      !isIntroPhase || state.introLoading || !state.introReady || state.advancing;
+  }
   if (elements.nextQuestion) {
-    elements.nextQuestion.disabled = !isSurveyPhase || state.submitting;
+    elements.nextQuestion.disabled = !isSurveyPhase || state.submitting || state.advancing;
+  }
+}
+
+function renderQuestionIntroState() {
+  const question = getCurrentQuestion();
+  if (elements.introQuestionText) {
+    elements.introQuestionText.textContent = question?.text || bilingual("読み込み中...", "Loading...");
+  }
+
+  if (!elements.beginQuestion) {
+    return;
+  }
+
+  if (state.introLoading) {
+    elements.beginQuestion.textContent = bilingual("動画を準備中...", "Preparing videos...");
+  } else {
+    elements.beginQuestion.textContent = bilingual("回答を始める", "Begin Rating");
   }
 }
 
@@ -588,6 +754,7 @@ function createUnavailableController(card, message) {
 
   return {
     ready: Promise.resolve(),
+    canResync: false,
     reset() {},
     getCurrentTime() {
       return 0;
@@ -600,36 +767,57 @@ function createUnavailableController(card, message) {
   };
 }
 
-function createFileVideoController(card, descriptor) {
+function createFileVideoController(card, descriptor, slot, { reusePreloaded = true } = {}) {
   const placeholder = card.querySelector('[data-role="placeholder"]');
-  const fileVideo = card.querySelector('[data-role="video"]');
+  let fileVideo = card.querySelector('[data-role="video"]');
   const youtubeSurface = card.querySelector('[data-role="youtube-player"]');
+  const videoKey = getVideoCacheKey(slot?.video);
+  const cachedVideo =
+    reusePreloaded && videoKey ? runtime.preloadedFileVideos.get(videoKey) || null : null;
+  const shouldCacheVideo = reusePreloaded && Boolean(videoKey);
+  if (cachedVideo && cachedVideo !== fileVideo) {
+    cachedVideo.setAttribute("data-role", "video");
+    fileVideo.replaceWith(cachedVideo);
+    fileVideo = cachedVideo;
+  }
   const hidePlaceholder = () => {
     placeholder.hidden = true;
     fileVideo.removeEventListener("loadeddata", hidePlaceholder);
     fileVideo.removeEventListener("canplay", hidePlaceholder);
   };
+  const handleError = () => {
+    hidePlaceholder();
+    fileVideo.hidden = true;
+    placeholder.hidden = false;
+    placeholder.textContent = bilingual("動画の読み込みに失敗しました。", "Failed to load the video.");
+  };
 
   youtubeSurface.hidden = true;
   fileVideo.hidden = false;
-  placeholder.hidden = false;
-  fileVideo.src = descriptor.url;
+  fileVideo.muted = true;
+  fileVideo.loop = true;
+  fileVideo.playsInline = true;
+  fileVideo.preload = "auto";
+  fileVideo.disablePictureInPicture = true;
+  fileVideo.crossOrigin = "anonymous";
+  placeholder.hidden = fileVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
+  if (!cachedVideo || !fileVideo.currentSrc || fileVideo.currentSrc !== descriptor.url) {
+    placeholder.hidden = false;
+    fileVideo.src = descriptor.url;
+    fileVideo.load();
+  }
+  if (shouldCacheVideo && videoKey && !runtime.preloadedFileVideos.has(videoKey)) {
+    runtime.preloadedFileVideos.set(videoKey, fileVideo);
+  }
+
   fileVideo.addEventListener("loadeddata", hidePlaceholder, { once: true });
   fileVideo.addEventListener("canplay", hidePlaceholder, { once: true });
-  fileVideo.load();
-  fileVideo.addEventListener(
-    "error",
-    () => {
-      hidePlaceholder();
-      fileVideo.hidden = true;
-      placeholder.hidden = false;
-      placeholder.textContent = bilingual("動画の読み込みに失敗しました。", "Failed to load the video.");
-    },
-    { once: true },
-  );
+  fileVideo.addEventListener("error", handleError, { once: true });
 
   return {
     ready: waitForFileVideoReady(fileVideo),
+    canResync: true,
     reset() {
       try {
         fileVideo.currentTime = 0;
@@ -655,9 +843,19 @@ function createFileVideoController(card, descriptor) {
       }
     },
     destroy() {
+      fileVideo.removeEventListener("error", handleError);
       fileVideo.pause();
-      fileVideo.removeAttribute("src");
-      fileVideo.load();
+      try {
+        fileVideo.currentTime = 0;
+      } catch (error) {
+        console.debug("Failed to reset local video during destroy", error);
+      }
+      if (shouldCacheVideo) {
+        moveVideoToPreloadBin(fileVideo);
+      } else {
+        fileVideo.removeAttribute("src");
+        fileVideo.load();
+      }
     },
   };
 }
@@ -743,6 +941,7 @@ function createYouTubeController(card, descriptor, playbackToken, slotIndex) {
 
   return {
     ready,
+    canResync: false,
     reset() {
       if (!player) {
         return;
@@ -811,7 +1010,7 @@ function createYouTubeController(card, descriptor, playbackToken, slotIndex) {
   };
 }
 
-function createMediaController(slot, card, playbackToken) {
+function createMediaController(slot, card, playbackToken, options = {}) {
   const descriptor = getVideoDescriptor(slot.video);
   if (descriptor.type === "missing") {
     return createUnavailableController(card, bilingual("動画情報が見つかりません。", "Video information was not found."));
@@ -821,7 +1020,7 @@ function createMediaController(slot, card, playbackToken) {
     return createYouTubeController(card, descriptor, playbackToken, slot.slotIndex);
   }
 
-  return createFileVideoController(card, descriptor);
+  return createFileVideoController(card, descriptor, slot, options);
 }
 
 function createReferenceCard(slot) {
@@ -875,7 +1074,9 @@ async function renderReferencePanel() {
   elements.referencePanel.appendChild(card);
   elements.referencePanel.hidden = false;
 
-  const controller = createMediaController(referenceSlot, card, runtime.playbackToken);
+  const controller = createMediaController(referenceSlot, card, runtime.playbackToken, {
+    reusePreloaded: false,
+  });
   runtime.referenceController = controller;
 
   const sourceController = runtime.mediaControllers.get(referenceSlot.slotIndex);
@@ -913,6 +1114,7 @@ function renderVideoGrid() {
 
   state.slots.forEach(updateVideoCardRating);
   void synchronizeVideoPlayback(playbackToken);
+  warmUpcomingShapeRound();
 }
 
 function updateVideoCardRating(slot) {
@@ -967,6 +1169,13 @@ function renderQuestionState() {
       bilingual("ポジティブ", "Positive");
     elements.scaleLegend.textContent = `1 = ${negativeLabel} / 5 = ${positiveLabel}`;
   }
+  if (state.advancing) {
+    elements.nextQuestion.textContent = bilingual("読み込み中...", "Loading...");
+    state.slots.forEach(updateVideoCardRating);
+    updateProgress();
+    void renderReferencePanel();
+    return;
+  }
   if (isLastSurveyStep()) {
     elements.nextQuestion.textContent = bilingual("回答を送信", "Submit Responses");
   } else if (isLastShapeForQuestion()) {
@@ -995,7 +1204,7 @@ function updateProgress() {
   if (elements.progressFill) {
     elements.progressFill.style.width = `${Math.max(0, Math.min(progressRatio, 1)) * 100}%`;
   }
-  elements.nextQuestion.disabled = state.phase !== "survey" || state.submitting;
+  elements.nextQuestion.disabled = state.phase !== "survey" || state.submitting || state.advancing;
 }
 
 function validateCurrentQuestion() {
@@ -1085,6 +1294,52 @@ async function submitSurvey() {
   }
 }
 
+async function enterQuestionIntro() {
+  cleanupMediaControllers();
+  if (elements.videoGrid) {
+    elements.videoGrid.innerHTML = "";
+  }
+  if (elements.referencePanel) {
+    elements.referencePanel.innerHTML = "";
+    elements.referencePanel.hidden = true;
+  }
+  state.introLoading = true;
+  state.introReady = false;
+  state.phase = "questionIntro";
+  renderQuestionIntroState();
+  renderAppPhase();
+
+  try {
+    await ensureShapeRoundPrepared(getCurrentShapeRound());
+    state.introReady = true;
+  } catch (error) {
+    console.debug("Failed to prepare the current shape round", error);
+    showToast(
+      bilingual(
+        "次の動画セットの準備に失敗しました。もう一度お試しください。",
+        "Failed to prepare the next video set. Please try again."
+      ),
+      4800,
+    );
+  } finally {
+    state.introLoading = false;
+    renderQuestionIntroState();
+    renderAppPhase();
+  }
+}
+
+async function beginCurrentQuestion() {
+  if (state.introLoading || !state.introReady || !getCurrentShapeRound()) {
+    return;
+  }
+
+  await ensureShapeRoundPrepared(getCurrentShapeRound());
+  state.phase = "survey";
+  renderAppPhase();
+  renderVideoGrid();
+  renderQuestionState();
+}
+
 async function runStartReadinessCheck() {
   state.sessionToken = "";
   state.startChecking = true;
@@ -1154,14 +1409,11 @@ async function handleStartSurvey() {
     return;
   }
 
-  state.phase = "survey";
-  renderAppPhase();
-  renderVideoGrid();
-  renderQuestionState();
+  await enterQuestionIntro();
 }
 
 async function handleNextQuestion() {
-  if (state.submitting) {
+  if (state.submitting || state.advancing) {
     return;
   }
 
@@ -1174,15 +1426,31 @@ async function handleNextQuestion() {
     return;
   }
 
-  if (isLastShapeForQuestion()) {
-    state.currentQuestionIndex += 1;
-    state.currentShapeIndex = 0;
-  } else {
-    state.currentShapeIndex += 1;
-  }
-  syncSlotsFromCurrentShape();
-  renderVideoGrid();
+  state.advancing = true;
   renderQuestionState();
+
+  try {
+    if (isLastShapeForQuestion()) {
+      state.currentQuestionIndex += 1;
+      state.currentShapeIndex = 0;
+      syncSlotsFromCurrentShape();
+      await enterQuestionIntro();
+      return;
+    }
+
+    state.currentShapeIndex += 1;
+    syncSlotsFromCurrentShape();
+    await ensureShapeRoundPrepared(getCurrentShapeRound());
+    renderVideoGrid();
+    renderQuestionState();
+  } finally {
+    state.advancing = false;
+    if (state.phase === "survey") {
+      renderQuestionState();
+    } else {
+      renderAppPhase();
+    }
+  }
 }
 
 async function bootstrap() {
@@ -1208,6 +1476,7 @@ async function bootstrap() {
         "Thank you. Your responses have been saved to the local path."
       );
     }
+    renderQuestionIntroState();
     renderAppPhase();
   } catch (error) {
     showToast(error.message, 6000);
@@ -1215,6 +1484,7 @@ async function bootstrap() {
 }
 
 elements.startSurvey.addEventListener("click", handleStartSurvey);
+elements.beginQuestion?.addEventListener("click", beginCurrentQuestion);
 elements.nextQuestion.addEventListener("click", handleNextQuestion);
 elements.userName?.addEventListener("input", clearUserNameInvalidState);
 elements.accessPassword?.addEventListener("input", clearAccessPasswordInvalidState);

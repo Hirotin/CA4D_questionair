@@ -8,8 +8,11 @@
 - `7` shapes per question
 - `20` videos per shape
 - video order is shuffled within each shape
+- before each question starts, the app shows a question-only interstitial page with `回答を始める「Begin Rating」`
+- while that interstitial is shown, the next video set is preloaded in the background
 - the `similarity_to_video_0` question shows `method 0011 (input gt)` as the fixed reference panel labeled `動画0「Video 0」`
 - after all `7` shapes are rated for one question, the app advances to the next question
+- videos in the same round are reset and started together, with periodic drift correction during playback
 
 The current dataset is driven by:
 
@@ -114,6 +117,12 @@ R2_ENDPOINT_URL='https://<account-id>.r2.cloudflarestorage.com'
 ```
 
 The current upload script reads the ZIP mapping CSV and uploads only the mapped `140` MP4 files.
+
+If a mapped video is not already `16` frames, the upload script rebuilds it to `16` frames by:
+
+- keeping the first frame
+- keeping the last frame
+- sampling `14` frames from the interior range
 
 ## Deploy on Render
 

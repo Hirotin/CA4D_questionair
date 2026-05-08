@@ -4,8 +4,13 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
+import math
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -18,6 +23,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 MAPPING_SUFFIX = "_mapping.csv"
 VIDEO_GROUP = "R2-20260508-ALL-LATEST"
+TARGET_FRAME_COUNT = 16
 
 
 def load_mapping_rows(zf: zipfile.ZipFile) -> list[dict[str, str]]:
@@ -70,6 +76,100 @@ def build_catalog_row(zip_prefix: str, row: dict[str, str]) -> dict[str, str]:
     }
 
 
+def probe_frame_count(video_path: Path) -> int:
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=nb_read_frames",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    payload = json.loads(subprocess.check_output(command))
+    streams = payload.get("streams", [])
+    if not streams:
+        return 0
+    return int(streams[0].get("nb_read_frames") or 0)
+
+
+def build_sample_indices(frame_count: int) -> list[int]:
+    if frame_count <= 0:
+        return []
+    if frame_count == TARGET_FRAME_COUNT:
+        return list(range(frame_count))
+    if frame_count < TARGET_FRAME_COUNT:
+        raise RuntimeError(
+            f"Cannot normalize a video with only {frame_count} frames to {TARGET_FRAME_COUNT} frames."
+        )
+
+    interior_target = TARGET_FRAME_COUNT - 2
+    interior_start = 1
+    interior_end = frame_count - 2
+    positions = []
+    for index in range(interior_target):
+        if interior_target == 1:
+            candidate = interior_start
+        else:
+            ratio = index / (interior_target - 1)
+            candidate = round(interior_start + ((interior_end - interior_start) * ratio))
+        positions.append(int(candidate))
+
+    deduped: list[int] = []
+    for candidate in positions:
+        if candidate not in deduped:
+            deduped.append(candidate)
+
+    cursor = interior_start
+    while len(deduped) < interior_target and cursor <= interior_end:
+        if cursor not in deduped:
+            deduped.append(cursor)
+        cursor += 1
+
+    deduped = sorted(deduped)[:interior_target]
+    return [0, *deduped, frame_count - 1]
+
+
+def normalize_video_to_16_frames(source_path: Path, target_path: Path) -> int:
+    frame_count = probe_frame_count(source_path)
+    if frame_count == TARGET_FRAME_COUNT:
+        shutil.copy2(source_path, target_path)
+        return frame_count
+
+    sample_indices = build_sample_indices(frame_count)
+    if len(sample_indices) != TARGET_FRAME_COUNT:
+        raise RuntimeError(
+            f"Expected {TARGET_FRAME_COUNT} sample indices, got {len(sample_indices)} for {source_path.name}."
+        )
+
+    selector = "+".join(f"eq(n\\,{index})" for index in sample_indices)
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_path),
+        "-vf",
+        f"select='{selector}',setpts=N/FRAME_RATE/TB",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        str(target_path),
+    ]
+    subprocess.check_call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    normalized_count = probe_frame_count(target_path)
+    if normalized_count != TARGET_FRAME_COUNT:
+        raise RuntimeError(
+            f"Normalization failed for {source_path.name}: expected {TARGET_FRAME_COUNT} frames, got {normalized_count}."
+        )
+    return frame_count
+
+
 def upload_zip(
     *,
     zip_path: Path,
@@ -98,27 +198,40 @@ def upload_zip(
     )
 
     uploaded_count = 0
+    normalized_count = 0
     catalog_rows: list[dict[str, str]] = []
     with zipfile.ZipFile(zip_path) as zf:
         rows = load_mapping_rows(zf)
-        zip_prefix = Path(rows[0]["file_name"]).parent.as_posix() if "/" in rows[0]["file_name"] else Path(zf.namelist()[0]).parts[0]
         root_prefix = Path(zf.namelist()[0]).parts[0]
 
-        for row in rows:
-            file_name = str(row.get("file_name", "")).strip()
-            if not file_name:
-                continue
-            member_name = f"{root_prefix}/{file_name}"
-            object_key = member_name
-            with zf.open(member_name) as source:
-                s3.upload_fileobj(
-                    source,
-                    bucket_name,
-                    object_key,
-                    ExtraArgs={"ContentType": "video/mp4"},
-                )
-            catalog_rows.append(build_catalog_row(root_prefix, row))
-            uploaded_count += 1
+        with tempfile.TemporaryDirectory(prefix="ca4d-r2-upload-") as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            for row in rows:
+                file_name = str(row.get("file_name", "")).strip()
+                if not file_name:
+                    continue
+                member_name = f"{root_prefix}/{file_name}"
+                object_key = member_name
+                source_path = temp_dir / file_name
+                normalized_path = temp_dir / f"normalized-{file_name}"
+                source_path.parent.mkdir(parents=True, exist_ok=True)
+
+                with zf.open(member_name) as source, source_path.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+
+                original_frame_count = normalize_video_to_16_frames(source_path, normalized_path)
+                if original_frame_count != TARGET_FRAME_COUNT:
+                    normalized_count += 1
+
+                with normalized_path.open("rb") as source_handle:
+                    s3.upload_fileobj(
+                        source_handle,
+                        bucket_name,
+                        object_key,
+                        ExtraArgs={"ContentType": "video/mp4"},
+                    )
+                catalog_rows.append(build_catalog_row(root_prefix, row))
+                uploaded_count += 1
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -140,7 +253,11 @@ def upload_zip(
         writer.writeheader()
         writer.writerows(catalog_rows)
 
-    return {"uploaded": uploaded_count, "catalogRows": len(catalog_rows)}
+    return {
+        "uploaded": uploaded_count,
+        "catalogRows": len(catalog_rows),
+        "normalized": normalized_count,
+    }
 
 
 def main() -> None:
@@ -179,7 +296,7 @@ def main() -> None:
         output_csv_path=output_csv_path,
     )
     print(
-        f"Uploaded {result['uploaded']} videos to {args.bucket} and wrote {result['catalogRows']} rows to {output_csv_path}."
+        f"Uploaded {result['uploaded']} videos to {args.bucket}, normalized {result['normalized']} videos to {TARGET_FRAME_COUNT} frames, and wrote {result['catalogRows']} rows to {output_csv_path}."
     )
 
 
