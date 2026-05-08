@@ -39,6 +39,8 @@
     "endpointEnv": "SURVEY_APPS_SCRIPT_ENDPOINT",
     "token": "",
     "tokenEnv": "SURVEY_APPS_SCRIPT_TOKEN",
+    "sheetUrl": "https://docs.google.com/spreadsheets/d/1ehpl67bOhGcxhLypC9gtTdp9yhpEuSZp9cyKKT75PT4/edit",
+    "sheetUrlEnv": "SURVEY_GOOGLE_SHEET_URL",
     "timeoutSeconds": 15
   },
   "shapeSurvey": {

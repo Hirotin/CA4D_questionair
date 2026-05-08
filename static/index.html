@@ -99,10 +99,20 @@
       </section>
 
       <section id="completion-stage" class="completion-stage" hidden>
-        <p id="completion-message" class="completion-message">
-          お疲れ様でした。回答はローカルパスに保存されています。「Thank you. Your responses have been saved to the local path.」
-        </p>
+        <div class="completion-stack">
+          <p id="completion-message" class="completion-message">
+            お疲れ様でした。回答はローカルパスに保存されています。「Thank you. Your responses have been saved to the local path.」
+          </p>
+          <p id="completion-sheets-path" class="completion-sheets-path" hidden></p>
+        </div>
       </section>
+    </div>
+
+    <div id="processing-overlay" class="processing-overlay" hidden>
+      <div class="processing-dialog">
+        <p class="processing-title">処理中です。少々お待ちください。</p>
+        <p class="processing-subtitle">Submitting. Please wait a moment.</p>
+      </div>
     </div>
 
     <div id="toast" class="toast" hidden></div>

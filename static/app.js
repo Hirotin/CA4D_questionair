@@ -50,6 +50,8 @@ const elements = {
   nextQuestion: document.getElementById("next-question"),
   adminNextSurvey: document.getElementById("admin-next-survey"),
   completionMessage: document.getElementById("completion-message"),
+  completionSheetsPath: document.getElementById("completion-sheets-path"),
+  processingOverlay: document.getElementById("processing-overlay"),
   toast: document.getElementById("toast"),
   preloadBin: document.getElementById("preload-bin"),
 };
@@ -73,6 +75,15 @@ function showToast(message, timeout = 3600) {
   showToast.timerId = window.setTimeout(() => {
     elements.toast.hidden = true;
   }, timeout);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function wait(milliseconds) {
@@ -131,6 +142,44 @@ function fitQuestionTextBlocks() {
   fitTextToSingleLine(elements.questionText, { minSize: 12, maxSize: 40 });
   if (elements.shapePrompt) {
     elements.shapePrompt.style.fontSize = "";
+  }
+}
+
+function renderProcessingOverlay() {
+  if (!elements.processingOverlay) {
+    return;
+  }
+
+  elements.processingOverlay.hidden = !state.submitting;
+}
+
+function renderCompletionState(localPath = "", downloadFilename = "") {
+  if (elements.completionMessage) {
+    const localDetail = localPath || downloadFilename;
+    const message = localDetail
+      ? bilingual(
+          `お疲れ様でした。回答は ${localDetail} に保存されています。`,
+          `Thank you. Your responses have been saved to ${localDetail}.`
+        )
+      : bilingual(
+          "お疲れ様でした。回答はローカルパスに保存されています。",
+          "Thank you. Your responses have been saved to the local path."
+        );
+    elements.completionMessage.textContent = message;
+  }
+
+  if (elements.completionSheetsPath) {
+    const sheetsUrl = String(state.config?.googleSheetsUrl ?? "").trim();
+    if (sheetsUrl) {
+      const escapedUrl = escapeHtml(sheetsUrl);
+      elements.completionSheetsPath.hidden = false;
+      elements.completionSheetsPath.innerHTML =
+        `${escapeHtml(bilingual("Google Sheets 保存先", "Google Sheets destination"))}: ` +
+        `<a href="${escapedUrl}" target="_blank" rel="noreferrer">${escapedUrl}</a>`;
+    } else {
+      elements.completionSheetsPath.hidden = true;
+      elements.completionSheetsPath.textContent = "";
+    }
   }
 }
 
@@ -803,6 +852,7 @@ function renderAppPhase() {
     elements.adminNextSurvey.disabled = !isSurveyPhase || state.submitting || state.advancing;
   }
 
+  renderProcessingOverlay();
   window.requestAnimationFrame(fitQuestionTextBlocks);
 }
 
@@ -1264,6 +1314,7 @@ async function submitSurvey() {
   state.submitting = true;
   elements.nextQuestion.textContent = bilingual("送信中...", "Submitting...");
   updateProgress();
+  renderProcessingOverlay();
 
   try {
     const payload = buildSubmissionPayload();
@@ -1276,17 +1327,17 @@ async function submitSurvey() {
     cleanupMediaControllers();
     state.phase = "completed";
     state.sessionToken = "";
-    elements.completionMessage.textContent = bilingual(
-      "お疲れ様でした。回答はローカルパスに保存されています。",
-      "Thank you. Your responses have been saved to the local path."
-    );
+    renderCompletionState(response.file, response.downloadFilename);
     renderAppPhase();
   } catch (error) {
     showToast(error.message);
   } finally {
     state.submitting = false;
+    renderProcessingOverlay();
     if (state.phase === "survey") {
       renderQuestionState();
+    } else {
+      renderAppPhase();
     }
   }
 }
@@ -1482,12 +1533,7 @@ async function bootstrap() {
       ),
       "info",
     );
-    if (elements.completionMessage) {
-      elements.completionMessage.textContent = bilingual(
-        "お疲れ様でした。回答はローカルパスに保存されています。",
-        "Thank you. Your responses have been saved to the local path."
-      );
-    }
+    renderCompletionState();
     renderQuestionIntroState();
     renderAppPhase();
   } catch (error) {

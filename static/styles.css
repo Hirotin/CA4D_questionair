@@ -545,6 +545,12 @@ button {
   place-items: center;
 }
 
+.completion-stack {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
 .completion-message {
   margin: 0;
   font-size: clamp(1.28rem, 2vw, 2rem);
@@ -552,6 +558,59 @@ button {
   text-align: center;
   color: var(--primary-strong);
   font-weight: 700;
+}
+
+.completion-sheets-path {
+  margin: 0;
+  max-width: min(960px, calc(100vw - 96px));
+  font-size: 1rem;
+  line-height: 1.8;
+  text-align: center;
+  color: var(--primary-strong);
+  word-break: break-word;
+}
+
+.completion-sheets-path a {
+  color: var(--accent-strong);
+}
+
+.processing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(245, 236, 216, 0.76);
+  backdrop-filter: blur(16px);
+}
+
+.processing-dialog {
+  width: min(760px, calc(100vw - 48px));
+  padding: 36px 32px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(10, 106, 109, 0.14);
+  box-shadow: 0 24px 48px rgba(18, 36, 36, 0.16);
+  text-align: center;
+}
+
+.processing-title,
+.processing-subtitle {
+  margin: 0;
+  color: var(--primary-strong);
+}
+
+.processing-title {
+  font-size: clamp(1.7rem, 3vw, 3rem);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.processing-subtitle {
+  margin-top: 12px;
+  font-size: clamp(1rem, 1.6vw, 1.3rem);
+  line-height: 1.6;
 }
 
 .toast {

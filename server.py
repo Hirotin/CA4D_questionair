@@ -365,6 +365,10 @@ def get_apps_script_sync_settings(config: dict[str, Any]) -> dict[str, Any]:
         str(raw_settings.get("tokenEnv", "SURVEY_APPS_SCRIPT_TOKEN")).strip()
         or "SURVEY_APPS_SCRIPT_TOKEN"
     )
+    sheet_url_env_name = (
+        str(raw_settings.get("sheetUrlEnv", "SURVEY_GOOGLE_SHEET_URL")).strip()
+        or "SURVEY_GOOGLE_SHEET_URL"
+    )
     enabled_env_name = (
         str(raw_settings.get("enabledEnv", "SURVEY_APPS_SCRIPT_ENABLED")).strip()
         or "SURVEY_APPS_SCRIPT_ENABLED"
@@ -381,6 +385,8 @@ def get_apps_script_sync_settings(config: dict[str, Any]) -> dict[str, Any]:
         "endpointEnv": endpoint_env_name,
         "token": str(raw_settings.get("token", "")).strip(),
         "tokenEnv": token_env_name,
+        "sheetUrl": str(os.environ.get(sheet_url_env_name, "") or raw_settings.get("sheetUrl", "")).strip(),
+        "sheetUrlEnv": sheet_url_env_name,
         "enabledEnv": enabled_env_name,
         "timeoutSeconds": max(int(raw_settings.get("timeoutSeconds", 15)), 1),
     }
@@ -1236,6 +1242,7 @@ def build_bootstrap_payload() -> dict[str, Any]:
     access_control = get_access_control_settings(config)
     shape_plan = build_shape_rounds(config)
     shape_settings = load_shape_survey_settings(config)
+    apps_script_settings = get_apps_script_sync_settings(config)
 
     return {
         "title": config["title"],
@@ -1268,6 +1275,7 @@ def build_bootstrap_payload() -> dict[str, Any]:
             "enabled": bool(access_control["enabled"]),
             "sessionTtlMinutes": int(access_control.get("sessionTtlMinutes", 720)),
         },
+        "googleSheetsUrl": apps_script_settings.get("sheetUrl", ""),
     }
 
 
