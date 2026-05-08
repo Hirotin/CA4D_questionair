@@ -1,7 +1,7 @@
 {
   "title": "動画アンケートスタジオ「Video Survey Studio」",
-  "subtitle": "7本の動画を横スクロールで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare seven videos in a horizontally scrollable row and rate each one on a five-point scale.」動画1は固定表示、動画2〜7はデータベースからランダム抽選されます。「Video 1 is fixed, and Videos 2 to 7 are randomly sampled from the database.」",
-  "slots": 7,
+  "subtitle": "21本の動画を横スクロールで見比べ、質問に対して各動画を5段階で評価するアンケート画面です。「This survey lets you compare twenty-one videos in a horizontally scrollable row and rate each one on a five-point scale.」動画1は固定表示、動画2〜21はデータベースからランダム抽選されます。「Video 1 is fixed, and Videos 2 to 21 are randomly sampled from the database.」",
+  "slots": 21,
   "scaleLabels": ["1", "2", "3", "4", "5"],
   "scaleHints": [
     "ネガティブ「Negative」",
@@ -76,9 +76,9 @@
     "promptText": ""
   },
   "randomVideoDatabase": {
-    "path": "data/random_video_catalog_16frame_r2.sqlite3",
+    "path": "data/random_video_catalog_combined_r2.sqlite3",
     "catalogCsvPaths": [
-      "data/video_catalog_16frame_r2_random.csv"
+      "data/video_catalog_combined_r2_random.csv"
     ],
     "seedVideos": []
   }
