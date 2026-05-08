@@ -38,6 +38,7 @@ const elements = {
   referencePanel: document.getElementById("reference-panel"),
   questionCounter: document.getElementById("question-counter"),
   questionText: document.getElementById("question-text"),
+  shapePrompt: document.getElementById("shape-prompt"),
   scaleLegend: document.getElementById("scale-legend"),
   userName: document.getElementById("user-name"),
   accessPasswordField: document.getElementById("access-password-field"),
@@ -505,6 +506,29 @@ function getCurrentQuestion() {
 
 function isSimilarityQuestion(question = getCurrentQuestion()) {
   return question?.id === "similarity_to_video_0" || question?.id === "similarity_to_video_1";
+}
+
+function isTextAlignmentQuestion(question = getCurrentQuestion()) {
+  return question?.id === "text_alignment";
+}
+
+function getCurrentShapePrompt() {
+  const currentShapeRound = getCurrentShapeRound();
+  if (!currentShapeRound) {
+    return "";
+  }
+
+  const videos = [
+    currentShapeRound.referenceVideo,
+    ...(currentShapeRound.slots || []).map((slot) => slot.video),
+  ];
+  for (const video of videos) {
+    const promptText = String(video?.promptText || "").trim();
+    if (promptText) {
+      return promptText;
+    }
+  }
+  return "";
 }
 
 function getScaleHintsForQuestion(question = getCurrentQuestion()) {
@@ -1223,6 +1247,14 @@ function renderQuestionState() {
     `Question ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
   );
   elements.questionText.textContent = question.text;
+  if (elements.shapePrompt) {
+    const shapePrompt = getCurrentShapePrompt();
+    const shouldShowShapePrompt = isTextAlignmentQuestion(question) && Boolean(shapePrompt);
+    elements.shapePrompt.hidden = !shouldShowShapePrompt;
+    elements.shapePrompt.textContent = shouldShowShapePrompt
+      ? bilingual(`テキスト「Text」: ${shapePrompt}`, `Text: ${shapePrompt}`)
+      : "";
+  }
   if (elements.scaleLegend) {
     const scaleHints = getScaleHintsForQuestion(question);
     const negativeLabel = scaleHints[0] || bilingual("低い", "Low");

@@ -24,6 +24,15 @@ if str(PROJECT_DIR) not in sys.path:
 MAPPING_SUFFIX = "_mapping.csv"
 VIDEO_GROUP = "R2-20260508-ALL-LATEST"
 TARGET_FRAME_COUNT = 16
+SHAPE_PROMPTS = {
+    "1013": "A dinosaur lowering its head",
+    "1047": "A character raising both hands / A character throwing their hands up in the air",
+    "1143": "A dinosaur shakes its head from side to side, then raises it and roars",
+    "1189": "A bear rearing up on its hind legs",
+    "1230": "A character moving both arms backward / A character putting their hands behind their back",
+    "1232": "A character raising a sword high / A character holding a sword aloft",
+    "1445": "A character spreads their long limbs, appearing larger",
+}
 
 
 def load_mapping_rows(zf: zipfile.ZipFile) -> list[dict[str, str]]:
@@ -48,6 +57,7 @@ def build_catalog_row(zip_prefix: str, row: dict[str, str]) -> dict[str, str]:
     file_name = str(row.get("file_name", "")).strip()
     original_name = str(row.get("original_name", "")).strip()
     object_key = f"{zip_prefix}/{file_name}"
+    prompt_text = SHAPE_PROMPTS.get(shape_id, "")
 
     title_parts = [f"Shape {shape_id}", f"Method {sequence}"]
     if method_label:
@@ -71,7 +81,7 @@ def build_catalog_row(zip_prefix: str, row: dict[str, str]) -> dict[str, str]:
         "video_code": f"{shape_id}-{sequence}",
         "method_name": sequence,
         "sample_name": shape_id,
-        "prompt_text": method_label,
+        "prompt_text": prompt_text,
         "is_active": "1",
     }
 

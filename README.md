@@ -38,7 +38,7 @@ Current catalog semantics:
 - `sample_name`: shape ID such as `1013`
 - `method_name`: method code such as `0001`
 - `video_code`: shape-method identifier such as `1013-0001`
-- `prompt_text`: method label from the ZIP mapping CSV, such as `4dgen fp`
+- `prompt_text`: shape prompt text, such as `A dinosaur lowering its head`
 
 The generated link list is exported to:
 

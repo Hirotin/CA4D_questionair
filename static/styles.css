@@ -308,6 +308,18 @@ button {
   white-space: nowrap;
 }
 
+.shape-prompt {
+  margin: 14px auto 0;
+  max-width: min(820px, 100%);
+  padding: 16px 20px;
+  border-radius: 20px;
+  background: rgba(10, 106, 109, 0.08);
+  color: var(--primary-strong);
+  font-size: 1rem;
+  line-height: 1.7;
+  font-weight: 600;
+}
+
 .scale-legend {
   margin: 10px auto 0;
   width: fit-content;
