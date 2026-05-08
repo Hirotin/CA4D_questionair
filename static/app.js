@@ -18,7 +18,6 @@ const runtime = {
   mediaControllers: new Map(),
   referenceController: null,
   playbackToken: 0,
-  youtubeApiPromise: null,
   autoplayWarningShown: false,
   syncLoopId: 0,
   preloadedFileVideos: new Map(),
@@ -82,6 +81,90 @@ function wait(milliseconds) {
   });
 }
 
+const PROMPT_TRANSLATIONS = {
+  "A dinosaur lowering its head": "頭を下げる恐竜",
+  "A character raising both hands": "両手を上げるキャラクター",
+  "A character throwing their hands up in the air": "両手を勢いよく空へ突き上げるキャラクター",
+  "A dinosaur shakes its head from side to side, then raises it and roars": "左右に頭を振ったあと、頭を持ち上げて咆哮する恐竜",
+  "A bear rearing up on its hind legs": "後ろ足で立ち上がるクマ",
+  "A character moving both arms backward": "両腕を後ろへ動かすキャラクター",
+  "A character putting their hands behind their back": "手を背中の後ろに回すキャラクター",
+  "A character raising a sword high": "剣を高く掲げるキャラクター",
+  "A character holding a sword aloft": "剣を高々と掲げるキャラクター",
+  "A character spreads their long limbs, appearing larger": "長い手足を広げて大きく見せるキャラクター",
+};
+
+function fitTextToSingleLine(element, options = {}) {
+  if (!element || element.hidden) {
+    return;
+  }
+
+  const minSize = Number(options.minSize ?? 16);
+  const maxSize = Number(options.maxSize ?? 40);
+  const precision = Number(options.precision ?? 0.5);
+  const availableWidth = element.clientWidth;
+  if (!availableWidth) {
+    return;
+  }
+
+  let low = minSize;
+  let high = maxSize;
+  let best = minSize;
+  element.style.fontSize = `${maxSize}px`;
+
+  while ((high - low) > precision) {
+    const mid = (low + high) / 2;
+    element.style.fontSize = `${mid}px`;
+    if (element.scrollWidth <= availableWidth) {
+      best = mid;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  element.style.fontSize = `${best}px`;
+}
+
+function fitQuestionTextBlocks() {
+  fitTextToSingleLine(elements.introQuestionText, { minSize: 12, maxSize: 42 });
+  fitTextToSingleLine(elements.questionText, { minSize: 12, maxSize: 40 });
+  fitTextToSingleLine(elements.shapePrompt, { minSize: 12, maxSize: 40 });
+}
+
+function splitPromptVariants(promptText) {
+  const seen = new Set();
+  return String(promptText ?? "")
+    .split("/")
+    .map((value) => value.trim())
+    .filter((value) => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    });
+}
+
+function formatShapePrompt(promptText) {
+  const englishVariants = splitPromptVariants(promptText);
+  if (!englishVariants.length) {
+    return "";
+  }
+
+  const japaneseVariants = englishVariants
+    .map((variant) => PROMPT_TRANSLATIONS[variant] || "")
+    .filter(Boolean);
+
+  const englishText = englishVariants.join(" / ");
+  if (!japaneseVariants.length) {
+    return englishText;
+  }
+
+  const japaneseText = Array.from(new Set(japaneseVariants)).join(" / ");
+  return japaneseText === englishText ? japaneseText : bilingual(japaneseText, englishText);
+}
+
 function enableWheelHorizontalScroll() {
   const scroller = elements.laneScroll;
   if (!scroller || scroller.dataset.wheelBound === "true") {
@@ -107,69 +190,18 @@ function enableWheelHorizontalScroll() {
   );
 }
 
-function extractYouTubeVideoId(sourceValue) {
-  const source = String(sourceValue ?? "").trim();
-  if (!source) {
-    return "";
-  }
-
-  const plainIdPattern = /^[A-Za-z0-9_-]{11}$/;
-  if (plainIdPattern.test(source)) {
-    return source;
-  }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(source, window.location.href);
-  } catch (error) {
-    return "";
-  }
-
-  const host = parsedUrl.hostname.toLowerCase();
-  if (host === "youtu.be" || host === "www.youtu.be") {
-    const [candidate = ""] = parsedUrl.pathname.replace(/^\/+/, "").split("/");
-    return plainIdPattern.test(candidate) ? candidate : "";
-  }
-
-  if (!host.endsWith("youtube.com") && !host.endsWith("youtube-nocookie.com")) {
-    return "";
-  }
-
-  if (parsedUrl.pathname === "/watch") {
-    const candidate = parsedUrl.searchParams.get("v") || "";
-    return plainIdPattern.test(candidate) ? candidate : "";
-  }
-
-  const segments = parsedUrl.pathname.split("/").filter(Boolean);
-  if (segments.length >= 2 && ["embed", "shorts", "live", "v"].includes(segments[0])) {
-    return plainIdPattern.test(segments[1]) ? segments[1] : "";
-  }
-
-  return "";
-}
-
 function getVideoDescriptor(video) {
   if (!video) {
-    return { type: "missing", youtubeId: "", url: "" };
-  }
-
-  const youtubeId = extractYouTubeVideoId(video.youtubeId || video.url);
-  if (youtubeId) {
-    return {
-      type: "youtube",
-      youtubeId,
-      url: String(video.url || ""),
-    };
+    return { type: "missing", url: "" };
   }
 
   const url = String(video.url || "").trim();
   if (!url) {
-    return { type: "missing", youtubeId: "", url: "" };
+    return { type: "missing", url: "" };
   }
 
   return {
     type: "file",
-    youtubeId: "",
     url: new URL(url, window.location.href).href,
   };
 }
@@ -187,43 +219,6 @@ function handleAutoplayBlocked() {
     ),
     5200,
   );
-}
-
-function loadYouTubeIframeApi() {
-  if (window.YT && typeof window.YT.Player === "function") {
-    return Promise.resolve(window.YT);
-  }
-
-  if (runtime.youtubeApiPromise) {
-    return runtime.youtubeApiPromise;
-  }
-
-  runtime.youtubeApiPromise = new Promise((resolve, reject) => {
-    const previousReadyHandler = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (typeof previousReadyHandler === "function") {
-        previousReadyHandler();
-      }
-      resolve(window.YT);
-    };
-
-    const existingScript = document.querySelector('script[data-role="youtube-iframe-api"]');
-    if (existingScript) {
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://www.youtube.com/iframe_api";
-    script.async = true;
-    script.dataset.role = "youtube-iframe-api";
-    script.addEventListener("error", () => {
-      runtime.youtubeApiPromise = null;
-      reject(new Error(bilingual("YouTube API を読み込めませんでした。", "Failed to load the YouTube API.")));
-    });
-    document.head.appendChild(script);
-  });
-
-  return runtime.youtubeApiPromise;
 }
 
 async function fetchJson(url, options = {}) {
@@ -779,6 +774,8 @@ function renderAppPhase() {
     elements.adminNextSurvey.hidden = !(isSurveyPhase && showAdminAdvance);
     elements.adminNextSurvey.disabled = !isSurveyPhase || state.submitting || state.advancing;
   }
+
+  window.requestAnimationFrame(fitQuestionTextBlocks);
 }
 
 function renderQuestionIntroState() {
@@ -796,6 +793,8 @@ function renderQuestionIntroState() {
   } else {
     elements.beginQuestion.textContent = bilingual("回答を始める", "Begin Rating");
   }
+
+  fitQuestionTextBlocks();
 }
 
 function createVideoCard(slot) {
@@ -829,7 +828,6 @@ function createVideoCard(slot) {
     </div>
     <div class="video-frame">
       <div class="video-placeholder" data-role="placeholder">${bilingual("動画を読み込んでいます...", "Loading video...")}</div>
-      <div class="youtube-player-surface" data-role="youtube-player" hidden></div>
       <video data-role="video" muted loop playsinline preload="auto" disablepictureinpicture tabindex="-1" hidden></video>
       <div class="video-interaction-shield" aria-hidden="true"></div>
     </div>
@@ -851,12 +849,10 @@ function createVideoCard(slot) {
 
 function createUnavailableController(card, message) {
   const placeholder = card.querySelector('[data-role="placeholder"]');
-  const youtubeSurface = card.querySelector('[data-role="youtube-player"]');
   const fileVideo = card.querySelector('[data-role="video"]');
 
   placeholder.textContent = message;
   placeholder.hidden = false;
-  youtubeSurface.hidden = true;
   fileVideo.hidden = true;
 
   return {
@@ -877,7 +873,6 @@ function createUnavailableController(card, message) {
 function createFileVideoController(card, descriptor) {
   const placeholder = card.querySelector('[data-role="placeholder"]');
   const fileVideo = card.querySelector('[data-role="video"]');
-  const youtubeSurface = card.querySelector('[data-role="youtube-player"]');
   const hidePlaceholder = () => {
     placeholder.hidden = true;
     fileVideo.removeEventListener("loadeddata", hidePlaceholder);
@@ -890,7 +885,6 @@ function createFileVideoController(card, descriptor) {
     placeholder.textContent = bilingual("動画の読み込みに失敗しました。", "Failed to load the video.");
   };
 
-  youtubeSurface.hidden = true;
   fileVideo.hidden = false;
   fileVideo.muted = true;
   fileVideo.loop = true;
@@ -951,164 +945,10 @@ function createFileVideoController(card, descriptor) {
   };
 }
 
-function createYouTubeController(card, descriptor, playbackToken, slotIndex) {
-  const placeholder = card.querySelector('[data-role="placeholder"]');
-  const fileVideo = card.querySelector('[data-role="video"]');
-  const youtubeSurface = card.querySelector('[data-role="youtube-player"]');
-  const playerHostId = `youtube-player-${playbackToken}-${slotIndex}`;
-
-  fileVideo.hidden = true;
-  youtubeSurface.hidden = false;
-  youtubeSurface.id = playerHostId;
-
-  let player = null;
-  const ready = new Promise((resolve) => {
-    const finish = () => resolve();
-
-    loadYouTubeIframeApi()
-      .then((YT) => {
-        if (playbackToken !== runtime.playbackToken) {
-          finish();
-          return;
-        }
-
-        player = new YT.Player(playerHostId, {
-          width: 256,
-          height: 256,
-          videoId: descriptor.youtubeId,
-          playerVars: {
-            autoplay: 0,
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            iv_load_policy: 3,
-            loop: 1,
-            origin: window.location.origin,
-            playlist: descriptor.youtubeId,
-            playsinline: 1,
-            rel: 0,
-          },
-          events: {
-            onReady(event) {
-              try {
-                event.target.mute();
-              } catch (error) {
-                console.debug("Failed to mute YouTube player", error);
-              }
-              placeholder.hidden = true;
-              finish();
-            },
-            onStateChange(event) {
-              if (event.data === YT.PlayerState.ENDED) {
-                try {
-                  event.target.seekTo(0, true);
-                  event.target.playVideo();
-                } catch (error) {
-                  console.debug("Failed to loop YouTube player", error);
-                }
-              }
-            },
-            onError() {
-              youtubeSurface.hidden = true;
-              placeholder.hidden = false;
-              placeholder.textContent = bilingual("YouTube 動画の読み込みに失敗しました。", "Failed to load the YouTube video.");
-              finish();
-            },
-            onAutoplayBlocked() {
-              handleAutoplayBlocked();
-            },
-          },
-        });
-      })
-      .catch((error) => {
-        console.debug("Failed to load YouTube iframe API", error);
-        youtubeSurface.hidden = true;
-        placeholder.hidden = false;
-        placeholder.textContent = bilingual("YouTube API を読み込めませんでした。", "Failed to load the YouTube API.");
-        showToast(bilingual("YouTube プレーヤーの読み込みに失敗しました。", "Failed to load the YouTube player."), 4200);
-        finish();
-      });
-  });
-
-  return {
-    ready,
-    canResync: false,
-    reset() {
-      if (!player) {
-        return;
-      }
-
-      try {
-        player.seekTo(0, true);
-      } catch (error) {
-        console.debug("Failed to reset YouTube player", error);
-      }
-    },
-    getCurrentTime() {
-      if (!player || typeof player.getCurrentTime !== "function") {
-        return 0;
-      }
-
-      try {
-        const currentTime = player.getCurrentTime();
-        return Number.isFinite(currentTime) ? currentTime : 0;
-      } catch (error) {
-        console.debug("Failed to get YouTube current time", error);
-        return 0;
-      }
-    },
-    seekTo(seconds) {
-      if (!player) {
-        return;
-      }
-
-      try {
-        player.seekTo(Number.isFinite(seconds) ? Math.max(seconds, 0) : 0, true);
-      } catch (error) {
-        console.debug("Failed to seek YouTube player", error);
-      }
-    },
-    play() {
-      if (!player) {
-        return Promise.resolve();
-      }
-
-      try {
-        player.mute();
-        player.playVideo();
-      } catch (error) {
-        console.debug("Failed to start YouTube playback", error);
-      }
-      return Promise.resolve();
-    },
-    destroy() {
-      if (!player) {
-        return;
-      }
-
-      try {
-        player.stopVideo();
-      } catch (error) {
-        console.debug("Failed to stop YouTube player", error);
-      }
-
-      try {
-        player.destroy();
-      } catch (error) {
-        console.debug("Failed to destroy YouTube player", error);
-      }
-    },
-  };
-}
-
 function createMediaController(slot, card, playbackToken) {
   const descriptor = getVideoDescriptor(slot.video);
   if (descriptor.type === "missing") {
     return createUnavailableController(card, bilingual("動画情報が見つかりません。", "Video information was not found."));
-  }
-
-  if (descriptor.type === "youtube") {
-    return createYouTubeController(card, descriptor, playbackToken, slot.slotIndex);
   }
 
   return createFileVideoController(card, descriptor);
@@ -1129,7 +969,6 @@ function createReferenceCard(slot) {
     )}</p>
     <div class="video-frame">
       <div class="video-placeholder" data-role="placeholder">${bilingual("動画を読み込んでいます...", "Loading video...")}</div>
-      <div class="youtube-player-surface" data-role="youtube-player" hidden></div>
       <video data-role="video" muted loop playsinline preload="auto" disablepictureinpicture tabindex="-1" hidden></video>
       <div class="video-interaction-shield" aria-hidden="true"></div>
     </div>
@@ -1268,7 +1107,7 @@ function renderQuestionState() {
     const shouldShowShapePrompt = isTextAlignmentQuestion(question) && Boolean(shapePrompt);
     elements.shapePrompt.hidden = !shouldShowShapePrompt;
     elements.shapePrompt.textContent = shouldShowShapePrompt
-      ? bilingual(`テキスト「Text」: ${shapePrompt}`, `Text: ${shapePrompt}`)
+      ? `テキスト「Text」: ${formatShapePrompt(shapePrompt)}`
       : "";
   }
   if (elements.scaleLegend) {
@@ -1298,6 +1137,7 @@ function renderQuestionState() {
   updateScaleHintsForVisibleCards(question);
   updateProgress();
   void renderReferencePanel();
+  fitQuestionTextBlocks();
 }
 
 function updateProgress() {
@@ -1625,6 +1465,7 @@ elements.adminNextSurvey?.addEventListener("click", handleAdminNextSurvey);
 elements.userName?.addEventListener("input", clearUserNameInvalidState);
 elements.userName?.addEventListener("input", renderAppPhase);
 elements.accessPassword?.addEventListener("input", clearAccessPasswordInvalidState);
+window.addEventListener("resize", fitQuestionTextBlocks);
 
 bootstrap();
 enableWheelHorizontalScroll();

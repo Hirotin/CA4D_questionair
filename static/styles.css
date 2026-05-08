@@ -92,7 +92,7 @@ body::before {
 }
 
 .intro-content {
-  width: min(680px, 100%);
+  width: min(1880px, calc(100vw - 48px));
   display: grid;
   gap: 24px;
   justify-items: center;
@@ -106,13 +106,15 @@ body::before {
   padding: 28px 32px;
   display: grid;
   place-items: center;
-  font-size: clamp(1.5rem, 2.5vw, 2.6rem);
+  font-size: clamp(1.2rem, 2.2vw, 2.6rem);
   line-height: 1.28;
   color: var(--primary-strong);
   background: var(--card-strong);
   border: 1px solid rgba(10, 106, 109, 0.12);
   border-radius: 28px;
   box-shadow: 0 18px 34px rgba(18, 36, 36, 0.1);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .intro-button {
@@ -306,7 +308,7 @@ button {
 }
 
 .question-focus {
-  width: min(960px, 100%);
+  width: min(1880px, calc(100vw - 48px));
   min-height: 136px;
   margin: 0 auto;
   padding: 24px 28px 20px;
@@ -319,23 +321,27 @@ button {
 
 .question-title {
   margin: 0 auto;
+  width: 100%;
   max-width: 100%;
-  width: fit-content;
-  font-size: clamp(1.4rem, 2.3vw, 2.4rem);
+  font-size: clamp(1.2rem, 2.1vw, 2.4rem);
   line-height: 1.2;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .shape-prompt {
   margin: 14px auto 0;
-  max-width: min(820px, 100%);
+  width: 100%;
+  max-width: 100%;
   padding: 16px 20px;
   border-radius: 20px;
   background: rgba(10, 106, 109, 0.08);
   color: var(--primary-strong);
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: clamp(1.2rem, 2.1vw, 2.4rem);
+  line-height: 1.2;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .scale-legend {
@@ -423,7 +429,6 @@ button {
 }
 
 .video-frame video,
-.youtube-player-surface,
 .video-placeholder {
   position: absolute;
   inset: 0;
@@ -434,19 +439,6 @@ button {
 .video-frame video {
   object-fit: cover;
   display: block;
-  pointer-events: none;
-}
-
-.youtube-player-surface {
-  background: #000;
-  pointer-events: none;
-}
-
-.youtube-player-surface iframe {
-  width: 100%;
-  height: 100%;
-  display: block;
-  border: 0;
   pointer-events: none;
 }
 
@@ -563,11 +555,6 @@ button {
   .survey-stage {
     width: 100%;
     min-height: calc(100vh - 32px);
-  }
-
-  .question-title {
-    width: auto;
-    white-space: normal;
   }
 
   .scale-legend {
