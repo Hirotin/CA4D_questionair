@@ -14,5 +14,7 @@ services:
         sync: false
       - key: SURVEY_APPS_SCRIPT_TOKEN
         sync: false
+      - key: SURVEY_VIDEO_PUBLIC_BASE_URL
+        sync: false
       - key: SURVEY_SMTP_PASSWORD
         sync: false

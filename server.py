@@ -60,8 +60,67 @@ def load_json_file(path: Path) -> Any:
         return json.load(handle)
 
 
-def normalize_video_entry(entry: dict[str, Any], *, default_source_label: str) -> dict[str, str]:
-    required_keys = ["id", "title", "url"]
+def get_video_storage_settings(config: dict[str, Any]) -> dict[str, str]:
+    raw_settings = config.get("videoStorage")
+    if not isinstance(raw_settings, dict):
+        raw_settings = {}
+
+    public_base_url_env = (
+        str(raw_settings.get("publicBaseUrlEnv", "SURVEY_VIDEO_PUBLIC_BASE_URL")).strip()
+        or "SURVEY_VIDEO_PUBLIC_BASE_URL"
+    )
+    public_base_url = os.environ.get(public_base_url_env, "").strip() or str(
+        raw_settings.get("publicBaseUrl", "")
+    ).strip()
+
+    return {
+        "provider": str(raw_settings.get("provider", "")).strip(),
+        "publicBaseUrl": public_base_url,
+        "publicBaseUrlEnv": public_base_url_env,
+    }
+
+
+def build_public_video_url(public_base_url: str, object_key: str) -> str:
+    normalized_base_url = str(public_base_url).strip().rstrip("/")
+    normalized_object_key = str(object_key).strip().lstrip("/")
+    if not normalized_base_url or not normalized_object_key:
+        return ""
+    encoded_key = urllib.parse.quote(normalized_object_key, safe="/-_.~")
+    return f"{normalized_base_url}/{encoded_key}"
+
+
+def resolve_video_location(
+    entry: dict[str, Any], *, public_base_url: str
+) -> tuple[str, str]:
+    raw_url = str(entry.get("url", "")).strip()
+    object_key = str(entry.get("objectKey", "")).strip().lstrip("/")
+
+    if object_key:
+        resolved_url = build_public_video_url(public_base_url, object_key)
+        if not resolved_url:
+            raise AppError(
+                bilingual(
+                    "objectKey を使う場合は videoStorage.publicBaseUrl または SURVEY_VIDEO_PUBLIC_BASE_URL を設定してください。",
+                    "When objectKey is used, set videoStorage.publicBaseUrl or SURVEY_VIDEO_PUBLIC_BASE_URL.",
+                ),
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+        return object_key, resolved_url
+
+    if raw_url:
+        parsed_url = urllib.parse.urlparse(raw_url)
+        if public_base_url and not parsed_url.scheme and not raw_url.startswith("/") and not raw_url.startswith("//"):
+            object_key = raw_url.lstrip("/")
+            return object_key, build_public_video_url(public_base_url, object_key)
+        return "", raw_url
+
+    return "", ""
+
+
+def normalize_video_entry(
+    entry: dict[str, Any], *, default_source_label: str, public_base_url: str = ""
+) -> dict[str, str]:
+    required_keys = ["id", "title"]
     missing = [key for key in required_keys if key not in entry]
     if missing:
         raise AppError(
@@ -72,10 +131,23 @@ def normalize_video_entry(entry: dict[str, Any], *, default_source_label: str) -
             HTTPStatus.INTERNAL_SERVER_ERROR,
         )
 
+    object_key, resolved_url = resolve_video_location(
+        entry, public_base_url=public_base_url
+    )
+    if not resolved_url:
+        raise AppError(
+            bilingual(
+                "動画エントリには url または objectKey が必要です。",
+                "Video entry requires either url or objectKey.",
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
+
     return {
         "id": str(entry["id"]),
         "title": str(entry["title"]),
-        "url": str(entry["url"]),
+        "url": resolved_url,
+        "objectKey": object_key,
         "description": str(entry.get("description", "")),
         "sourceLabel": str(entry.get("sourceLabel", default_source_label)),
         "videoGroup": str(entry.get("videoGroup", "")).strip(),
@@ -427,8 +499,13 @@ def get_database_path(config: dict[str, Any]) -> Path:
 
 
 def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
+    storage_settings = get_video_storage_settings(config)
     seed_videos = [
-        normalize_video_entry(video, default_source_label=DATABASE_SOURCE_LABEL)
+        normalize_video_entry(
+            video,
+            default_source_label=DATABASE_SOURCE_LABEL,
+            public_base_url=storage_settings["publicBaseUrl"],
+        )
         for video in config["randomVideoDatabase"]["seedVideos"]
     ]
     database_path = get_database_path(config)
@@ -441,6 +518,7 @@ def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
                     id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
+                    object_key TEXT NOT NULL DEFAULT '',
                     url TEXT NOT NULL,
                     source_label TEXT NOT NULL DEFAULT '',
                     video_group TEXT NOT NULL DEFAULT '',
@@ -457,6 +535,10 @@ def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
                 str(row[1])
                 for row in connection.execute("PRAGMA table_info(videos)").fetchall()
             }
+            if "object_key" not in existing_columns:
+                connection.execute(
+                    "ALTER TABLE videos ADD COLUMN object_key TEXT NOT NULL DEFAULT ''"
+                )
             if "video_group" not in existing_columns:
                 connection.execute(
                     "ALTER TABLE videos ADD COLUMN video_group TEXT NOT NULL DEFAULT ''"
@@ -484,6 +566,7 @@ def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
                         id,
                         title,
                         description,
+                        object_key,
                         url,
                         source_label,
                         video_group,
@@ -494,10 +577,11 @@ def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
                         is_active,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title,
                         description = excluded.description,
+                        object_key = excluded.object_key,
                         url = excluded.url,
                         source_label = excluded.source_label,
                         video_group = excluded.video_group,
@@ -512,6 +596,7 @@ def ensure_random_video_database(config: dict[str, Any]) -> dict[str, Any]:
                         video["id"],
                         video["title"],
                         video["description"],
+                        video["objectKey"],
                         video["url"],
                         video["sourceLabel"],
                         video["videoGroup"],
@@ -547,6 +632,7 @@ def load_random_video_catalog(config: dict[str, Any]) -> dict[str, Any]:
                 id,
                 title,
                 description,
+                object_key,
                 url,
                 source_label,
                 video_group,
@@ -564,6 +650,7 @@ def load_random_video_catalog(config: dict[str, Any]) -> dict[str, Any]:
             "id": str(row["id"]),
             "title": str(row["title"]),
             "description": str(row["description"] or ""),
+            "objectKey": str(row["object_key"] or ""),
             "url": str(row["url"]),
             "sourceLabel": str(row["source_label"] or DATABASE_SOURCE_LABEL),
             "videoGroup": str(row["video_group"] or ""),
@@ -605,6 +692,7 @@ def export_video_links_csv(
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "video_code",
+        "object_key",
         "video_url",
         "method_name",
         "sample_name",
@@ -621,6 +709,7 @@ def export_video_links_csv(
         catalog.append(
             {
                 "video_code": video_code,
+                "object_key": str(video.get("objectKey", "")).strip(),
                 "video_url": str(video.get("url", "")).strip(),
                 "method_name": str(video.get("methodName", "")).strip(),
                 "sample_name": str(video.get("sampleName", "")).strip(),
@@ -642,7 +731,12 @@ def export_video_links_csv(
 def resolve_configured_slots(config: dict[str, Any] | None = None) -> dict[str, Any]:
     config = config or load_config()
     questions = load_questions(config)
-    fixed_video = normalize_video_entry(config["fixedSlotVideo"], default_source_label=bilingual("固定動画", "Fixed Video"))
+    storage_settings = get_video_storage_settings(config)
+    fixed_video = normalize_video_entry(
+        config["fixedSlotVideo"],
+        default_source_label=bilingual("固定動画", "Fixed Video"),
+        public_base_url=storage_settings["publicBaseUrl"],
+    )
     random_slot_count = max(int(config["slots"]) - 1, 0)
     random_catalog = load_random_video_catalog(config)
     export_video_links_csv(fixed_video=fixed_video, random_videos=random_catalog["videos"])
@@ -1067,6 +1161,7 @@ def validate_submission(payload: dict[str, Any], session: dict[str, Any] | None 
             normalized_video = {
                 "id": str(expected_video.get("id", "")),
                 "title": str(expected_video.get("title", "")),
+                "objectKey": str(expected_video.get("objectKey", "")).strip(),
                 "url": str(expected_video.get("url", "")),
                 "sourceLabel": str(expected_video.get("sourceLabel", "")),
                 "description": str(expected_video.get("description", "")),
@@ -1085,6 +1180,7 @@ def validate_submission(payload: dict[str, Any], session: dict[str, Any] | None 
             normalized_video = {
                 "id": str(video.get("id", "")),
                 "title": str(video["title"]),
+                "objectKey": str(video.get("objectKey", "")).strip(),
                 "url": str(video["url"]),
                 "sourceLabel": str(video.get("sourceLabel", "")),
                 "description": str(video.get("description", "")),

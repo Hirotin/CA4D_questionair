@@ -28,6 +28,11 @@
     "passwordEnv": "SURVEY_START_PASSWORD",
     "sessionTtlMinutes": 720
   },
+  "videoStorage": {
+    "provider": "r2",
+    "publicBaseUrl": "",
+    "publicBaseUrlEnv": "SURVEY_VIDEO_PUBLIC_BASE_URL"
+  },
   "appsScriptSync": {
     "enabled": false,
     "endpointUrl": "",

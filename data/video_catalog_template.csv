@@ -1,0 +1,2 @@
+id,title,description,object_key,video_url,source_label,video_group,video_code,method_name,sample_name,prompt_text,is_active
+r2-sample-001,Sample Video 001,,batch/sample-001.mp4,,R2 Random,R2,R2-001,Method A,Sample 001,Prompt text for sample 001,1
