@@ -60,10 +60,6 @@
       "text": "形状の一貫性「Please rate the shape consistency of the motion」"
     },
     {
-      "id": "motion_diversity",
-      "text": "動画内の動きの多様性を評価してください。「Please rate the motion diversity in the videos」"
-    },
-    {
       "id": "text_alignment",
       "text": "テキスト整合性「Please rate the text alignment」"
     }

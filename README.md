@@ -4,7 +4,7 @@
 
 ## Current Survey Design
 
-- `5` questions
+- `4` questions
 - `7` shapes per question
 - `20` videos per shape
 - video order is shuffled within each shape
