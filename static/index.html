@@ -49,9 +49,14 @@
       <section id="question-intro-stage" class="stage-card intro-stage" hidden>
         <div class="intro-content">
           <h2 id="intro-question-text" class="intro-question-text">読み込み中...「Loading...」</h2>
-          <button id="begin-question" class="primary-button intro-button" type="button" disabled>
-            動画を準備中...「Preparing videos...」
-          </button>
+          <div class="intro-actions">
+            <button id="begin-question" class="primary-button intro-button" type="button" disabled>
+              動画を準備中...「Preparing videos...」
+            </button>
+            <button id="admin-next-intro" class="secondary-button intro-button" type="button" hidden>
+              次のページへ「Next Page」
+            </button>
+          </div>
         </div>
       </section>
 
@@ -83,6 +88,9 @@
 
         <div class="question-actions question-actions-bottom">
           <button id="next-question" class="primary-button" type="button">次の形状へ「Next Shape」</button>
+          <button id="admin-next-survey" class="secondary-button" type="button" hidden>
+            次のページへ「Next Page」
+          </button>
         </div>
       </section>
 

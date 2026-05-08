@@ -47,7 +47,9 @@ const elements = {
   startReadinessStatus: document.getElementById("start-readiness-status"),
   introQuestionText: document.getElementById("intro-question-text"),
   beginQuestion: document.getElementById("begin-question"),
+  adminNextIntro: document.getElementById("admin-next-intro"),
   nextQuestion: document.getElementById("next-question"),
+  adminNextSurvey: document.getElementById("admin-next-survey"),
   completionMessage: document.getElementById("completion-message"),
   toast: document.getElementById("toast"),
   preloadBin: document.getElementById("preload-bin"),
@@ -672,6 +674,10 @@ function getUserName() {
   return String(elements.userName?.value ?? "").trim();
 }
 
+function isAdminUser() {
+  return getUserName().toLowerCase() === "admin";
+}
+
 function accessPasswordEnabled() {
   return Boolean(state.config?.accessControl?.enabled);
 }
@@ -737,6 +743,7 @@ function renderAppPhase() {
   const isIntroPhase = state.phase === "questionIntro";
   const isSurveyPhase = state.phase === "survey";
   const isCompletedPhase = state.phase === "completed";
+  const showAdminAdvance = isAdminUser();
 
   document.body.dataset.phase = state.phase;
   elements.startStage.hidden = !isStartPhase;
@@ -760,8 +767,17 @@ function renderAppPhase() {
     elements.beginQuestion.disabled =
       !isIntroPhase || state.introLoading || !state.introReady || state.advancing;
   }
+  if (elements.adminNextIntro) {
+    elements.adminNextIntro.hidden = !(isIntroPhase && showAdminAdvance);
+    elements.adminNextIntro.disabled =
+      !isIntroPhase || state.introLoading || !state.introReady || state.advancing;
+  }
   if (elements.nextQuestion) {
     elements.nextQuestion.disabled = !isSurveyPhase || state.submitting || state.advancing;
+  }
+  if (elements.adminNextSurvey) {
+    elements.adminNextSurvey.hidden = !(isSurveyPhase && showAdminAdvance);
+    elements.adminNextSurvey.disabled = !isSurveyPhase || state.submitting || state.advancing;
   }
 }
 
@@ -1318,6 +1334,14 @@ function validateCurrentQuestion() {
   return true;
 }
 
+function fillMissingRatingsForCurrentShape(defaultRating = 3) {
+  state.slots.forEach((slot) => {
+    if (!Number.isInteger(getRatingForSlot(slot.slotIndex))) {
+      setRatingForCurrentQuestion(slot.slotIndex, defaultRating);
+    }
+  });
+}
+
 function buildSubmissionPayload() {
   const responses = [];
 
@@ -1508,13 +1532,16 @@ async function handleStartSurvey() {
   await enterQuestionIntro();
 }
 
-async function handleNextQuestion() {
+async function advanceSurveyPage({ allowIncomplete = false } = {}) {
   if (state.submitting || state.advancing) {
     return;
   }
 
-  if (!validateCurrentQuestion()) {
+  if (!allowIncomplete && !validateCurrentQuestion()) {
     return;
+  }
+  if (allowIncomplete) {
+    fillMissingRatingsForCurrentShape(3);
   }
 
   if (isLastSurveyStep()) {
@@ -1549,6 +1576,17 @@ async function handleNextQuestion() {
   }
 }
 
+async function handleNextQuestion() {
+  await advanceSurveyPage({ allowIncomplete: false });
+}
+
+async function handleAdminNextSurvey() {
+  if (!isAdminUser()) {
+    return;
+  }
+  await advanceSurveyPage({ allowIncomplete: true });
+}
+
 async function bootstrap() {
   try {
     const payload = await fetchJson("/api/bootstrap");
@@ -1581,8 +1619,11 @@ async function bootstrap() {
 
 elements.startSurvey.addEventListener("click", handleStartSurvey);
 elements.beginQuestion?.addEventListener("click", beginCurrentQuestion);
+elements.adminNextIntro?.addEventListener("click", beginCurrentQuestion);
 elements.nextQuestion.addEventListener("click", handleNextQuestion);
+elements.adminNextSurvey?.addEventListener("click", handleAdminNextSurvey);
 elements.userName?.addEventListener("input", clearUserNameInvalidState);
+elements.userName?.addEventListener("input", renderAppPhase);
 elements.accessPassword?.addEventListener("input", clearAccessPasswordInvalidState);
 
 bootstrap();

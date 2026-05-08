@@ -120,6 +120,13 @@ body::before {
   min-height: 54px;
 }
 
+.intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
 .user-meta-field {
   display: grid;
   gap: 8px;
@@ -182,7 +189,18 @@ button {
   box-shadow: 0 18px 28px rgba(8, 70, 73, 0.2);
 }
 
+.secondary-button {
+  border-radius: 999px;
+  padding: 15px 20px;
+  font-weight: 700;
+  color: var(--primary-strong);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(10, 106, 109, 0.16);
+  box-shadow: 0 14px 24px rgba(18, 36, 36, 0.08);
+}
+
 .primary-button:hover,
+.secondary-button:hover,
 .rating-chip:hover {
   transform: translateY(-1px);
 }
@@ -500,6 +518,8 @@ button {
 .question-actions {
   display: flex;
   justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .question-actions-bottom .primary-button {
