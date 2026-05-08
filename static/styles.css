@@ -108,6 +108,15 @@ body::before {
   text-align: center;
 }
 
+.intro-instruction {
+  margin: 0;
+  width: 100%;
+  color: var(--primary-strong);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
 .intro-question-text {
   margin: 0;
   width: 100%;
