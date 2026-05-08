@@ -351,15 +351,19 @@ button {
   margin: 14px auto 0;
   width: 100%;
   max-width: 100%;
+  min-height: 88px;
   padding: 16px 20px;
+  display: grid;
+  place-items: center;
   border-radius: 20px;
   background: rgba(10, 106, 109, 0.08);
   color: var(--primary-strong);
   font-size: clamp(1.2rem, 2.1vw, 2.4rem);
-  line-height: 1.2;
+  line-height: 1.35;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
 }
 
 .scale-legend {

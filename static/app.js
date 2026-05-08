@@ -129,7 +129,9 @@ function fitTextToSingleLine(element, options = {}) {
 function fitQuestionTextBlocks() {
   fitTextToSingleLine(elements.introQuestionText, { minSize: 12, maxSize: 42 });
   fitTextToSingleLine(elements.questionText, { minSize: 12, maxSize: 40 });
-  fitTextToSingleLine(elements.shapePrompt, { minSize: 12, maxSize: 40 });
+  if (elements.shapePrompt) {
+    elements.shapePrompt.style.fontSize = "";
+  }
 }
 
 function splitPromptVariants(promptText) {
