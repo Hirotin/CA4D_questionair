@@ -199,6 +199,24 @@ function resetLaneScrollPosition() {
   scroller.scrollLeft = 0;
 }
 
+function centerCardInLane(card, behavior = "smooth") {
+  const scroller = elements.laneScroll;
+  if (!scroller || !card) {
+    return;
+  }
+
+  const cardLeft = card.offsetLeft;
+  const cardWidth = card.offsetWidth;
+  const targetLeft = cardLeft - ((scroller.clientWidth - cardWidth) / 2);
+  const maxLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+  const clampedLeft = Math.max(0, Math.min(targetLeft, maxLeft));
+
+  scroller.scrollTo({
+    left: clampedLeft,
+    behavior,
+  });
+}
+
 function getVideoDescriptor(video) {
   if (!video) {
     return { type: "missing", url: "" };
@@ -1086,6 +1104,7 @@ function updateScaleHintsForVisibleCards(question = getCurrentQuestion()) {
 
 function highlightMissingRatings() {
   let missingCount = 0;
+  let firstMissingCard = null;
   state.slots.forEach((slot) => {
     const card = elements.videoGrid.querySelector(`[data-slot-index="${slot.slotIndex}"]`);
     const isMissing = !Number.isInteger(getRatingForSlot(slot.slotIndex));
@@ -1093,9 +1112,17 @@ function highlightMissingRatings() {
       card.classList.toggle("is-missing", isMissing);
     }
     if (isMissing) {
+      if (!firstMissingCard && card) {
+        firstMissingCard = card;
+      }
       missingCount += 1;
     }
   });
+
+  if (firstMissingCard) {
+    centerCardInLane(firstMissingCard);
+  }
+
   return missingCount;
 }
 
