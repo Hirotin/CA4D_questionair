@@ -307,6 +307,21 @@ function handleAutoplayBlocked() {
   );
 }
 
+function isAutoplayBlockError(error) {
+  if (!error) {
+    return false;
+  }
+
+  const name = String(error.name || "");
+  const message = String(error.message || "").toLowerCase();
+  return (
+    name === "NotAllowedError" ||
+    message.includes("autoplay") ||
+    message.includes("user gesture") ||
+    message.includes("play() failed because the user")
+  );
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     headers: {
@@ -389,6 +404,7 @@ function moveVideoToPreloadBin(video) {
     return;
   }
   video.hidden = true;
+  video.dataset.preloading = "true";
   elements.preloadBin.appendChild(video);
 }
 
@@ -409,6 +425,24 @@ function createPreloadVideoElement(slot) {
   moveVideoToPreloadBin(video);
   video.load();
   return video;
+}
+
+function attachPreparedVideoElement(card, slot, descriptor) {
+  const fallbackVideo = card.querySelector('[data-role="video"]');
+  const videoKey = getVideoCacheKey(slot.video);
+  const preparedVideo = videoKey ? runtime.preloadedFileVideos.get(videoKey) : null;
+  if (
+    preparedVideo &&
+    descriptor.type === "file" &&
+    String(preparedVideo.currentSrc || preparedVideo.src || "") === descriptor.url
+  ) {
+    preparedVideo.hidden = false;
+    preparedVideo.dataset.preloading = "false";
+    fallbackVideo.replaceWith(preparedVideo);
+    return preparedVideo;
+  }
+
+  return fallbackVideo;
 }
 
 function getQuestionPlanByIndex(questionIndex = state.currentQuestionIndex) {
@@ -515,6 +549,40 @@ function clearPlaybackSyncLoop() {
     window.clearInterval(runtime.syncLoopId);
     runtime.syncLoopId = 0;
   }
+}
+
+async function primePreparedRoundPlayback(questionPlan, shapeRound) {
+  if (!questionPlan || !shapeRound) {
+    return;
+  }
+
+  await ensureQuestionRoundPrepared(questionPlan, shapeRound);
+  await Promise.all(
+    (shapeRound.slots || []).map(async (slot) => {
+      const descriptor = getVideoDescriptor(slot.video);
+      const videoKey = getVideoCacheKey(slot.video);
+      const preparedVideo = videoKey ? runtime.preloadedFileVideos.get(videoKey) : null;
+      if (!preparedVideo || descriptor.type !== "file") {
+        return;
+      }
+
+      try {
+        preparedVideo.currentTime = 0;
+      } catch (error) {
+        console.debug("Failed to reset prepared video", error);
+      }
+
+      try {
+        await preparedVideo.play();
+      } catch (error) {
+        if (isAutoplayBlockError(error)) {
+          handleAutoplayBlocked();
+        } else {
+          console.debug("Prepared video playback failed", error);
+        }
+      }
+    }),
+  );
 }
 
 function primePlaybackControllers() {
@@ -738,7 +806,8 @@ function renderQuestionHeading(element, question) {
   }
 
   const text = question?.text || bilingual("読み込み中...", "Loading...");
-  const isMultiline = question?.id === "method_diversity";
+  const parts = splitBilingualText(text);
+  const isMultiline = Boolean(parts.english);
   element.style.fontSize = "";
   element.classList.toggle("is-multiline", isMultiline);
 
@@ -747,7 +816,6 @@ function renderQuestionHeading(element, question) {
     return;
   }
 
-  const parts = splitBilingualText(text);
   if (!parts.english) {
     element.innerHTML = escapeHtmlWithLineBreaks(parts.japanese);
     return;
@@ -1090,7 +1158,11 @@ function createUnavailableController(card, message) {
 
 function createFileVideoController(card, descriptor) {
   const placeholder = card.querySelector('[data-role="placeholder"]');
-  const fileVideo = card.querySelector('[data-role="video"]');
+  const slotIndex = Number(card.dataset.slotIndex || "-1");
+  const slot = state.slots.find((item) => item.slotIndex === slotIndex);
+  const fileVideo = slot
+    ? attachPreparedVideoElement(card, slot, descriptor)
+    : card.querySelector('[data-role="video"]');
   const hidePlaceholder = () => {
     placeholder.hidden = true;
     fileVideo.removeEventListener("loadeddata", hidePlaceholder);
@@ -1145,7 +1217,11 @@ function createFileVideoController(card, descriptor) {
       try {
         await fileVideo.play();
       } catch (error) {
-        handleAutoplayBlocked();
+        if (isAutoplayBlockError(error)) {
+          handleAutoplayBlocked();
+        } else {
+          console.debug("Video playback failed", error);
+        }
       }
     },
     destroy() {
@@ -1538,11 +1614,25 @@ async function beginCurrentQuestion() {
     return;
   }
 
-  state.phase = "survey";
+  state.introLoading = true;
+  renderQuestionIntroState();
   renderAppPhase();
-  renderVideoGrid();
-  renderQuestionState();
-  primePlaybackControllers();
+
+  try {
+    await primePreparedRoundPlayback(getCurrentQuestionPlan(), getCurrentShapeRound());
+    await wait(120);
+    state.phase = "survey";
+    renderAppPhase();
+    renderVideoGrid();
+    renderQuestionState();
+    primePlaybackControllers();
+  } finally {
+    state.introLoading = false;
+    if (state.phase === "questionIntro") {
+      renderQuestionIntroState();
+      renderAppPhase();
+    }
+  }
 }
 
 async function runStartReadinessCheck() {
@@ -1646,6 +1736,9 @@ async function advanceSurveyPage({ allowIncomplete = false } = {}) {
       return;
     }
 
+    const nextShapeRound = state.shapeRounds[state.currentShapeIndex + 1] || null;
+    await primePreparedRoundPlayback(getCurrentQuestionPlan(), nextShapeRound);
+    await wait(120);
     state.currentShapeIndex += 1;
     syncSlotsFromCurrentShape();
     renderVideoGrid();
