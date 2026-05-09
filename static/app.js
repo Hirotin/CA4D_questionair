@@ -728,6 +728,10 @@ function splitBilingualText(text) {
   };
 }
 
+function escapeHtmlWithLineBreaks(text) {
+  return escapeHtml(text).replaceAll("\n", "<br />");
+}
+
 function renderQuestionHeading(element, question) {
   if (!element) {
     return;
@@ -745,13 +749,13 @@ function renderQuestionHeading(element, question) {
 
   const parts = splitBilingualText(text);
   if (!parts.english) {
-    element.textContent = parts.japanese;
+    element.innerHTML = escapeHtmlWithLineBreaks(parts.japanese);
     return;
   }
 
   element.innerHTML =
-    `${escapeHtml(parts.japanese)}<br />` +
-    `<span class="question-text-english">「${escapeHtml(parts.english)}」</span>`;
+    `${escapeHtmlWithLineBreaks(parts.japanese)}<br />` +
+    `<span class="question-text-english">「${escapeHtmlWithLineBreaks(parts.english)}」</span>`;
 }
 
 function buildEmptyAnswers() {

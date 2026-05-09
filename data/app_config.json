@@ -129,7 +129,7 @@
     },
     {
       "id": "method_diversity",
-      "text": "各手法の多様性を1から5で評価してください。自然さとは独立に判断してください。「Please rate the diversity of each method from 1 to 5, independently of naturalness.」"
+      "text": "各動画内にある5つの動きを見てその多様性を評価してください。\n自然さとは独立に評価してください。「Please rate the diversity of the five motions within each video.\nPlease evaluate independently of naturalness.」"
     }
   ],
   "randomVideoDatabase": {
