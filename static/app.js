@@ -1587,33 +1587,20 @@ async function enterQuestionIntro() {
     elements.referencePanel.innerHTML = "";
     elements.referencePanel.hidden = true;
   }
-  state.introLoading = true;
-  state.introReady = false;
+  state.introLoading = false;
+  state.introReady = true;
   state.phase = "questionIntro";
   renderQuestionIntroState();
   renderAppPhase();
 
-  try {
-    await ensureQuestionRoundPrepared(getCurrentQuestionPlan(), getCurrentShapeRound());
-    state.introReady = true;
-  } catch (error) {
+  void ensureQuestionRoundPrepared(getCurrentQuestionPlan(), getCurrentShapeRound()).catch((error) => {
     console.debug("Failed to prepare the current shape round", error);
-    showToast(
-      bilingual(
-        "次の動画セットの準備に失敗しました。もう一度お試しください。",
-        "Failed to prepare the next video set. Please try again."
-      ),
-      4800,
-    );
-  } finally {
-    state.introLoading = false;
-    renderQuestionIntroState();
-    renderAppPhase();
-  }
+  });
 }
 
-async function beginCurrentQuestion() {
-  if (state.introLoading || !state.introReady || !getCurrentShapeRound()) {
+async function beginCurrentQuestion(options = {}) {
+  const allowWhilePreparing = Boolean(options.allowWhilePreparing);
+  if ((!allowWhilePreparing && state.introLoading) || !getCurrentShapeRound()) {
     return;
   }
 
@@ -1636,6 +1623,13 @@ async function beginCurrentQuestion() {
       renderAppPhase();
     }
   }
+}
+
+async function handleAdminNextIntro() {
+  if (!isAdminUser()) {
+    return;
+  }
+  await beginCurrentQuestion({ allowWhilePreparing: true });
 }
 
 async function runStartReadinessCheck() {
@@ -1795,7 +1789,7 @@ async function bootstrap() {
 
 elements.startSurvey.addEventListener("click", handleStartSurvey);
 elements.beginQuestion?.addEventListener("click", beginCurrentQuestion);
-elements.adminNextIntro?.addEventListener("click", beginCurrentQuestion);
+elements.adminNextIntro?.addEventListener("click", handleAdminNextIntro);
 elements.nextQuestion.addEventListener("click", handleNextQuestion);
 elements.adminNextSurvey?.addEventListener("click", handleAdminNextSurvey);
 elements.userName?.addEventListener("input", clearUserNameInvalidState);
