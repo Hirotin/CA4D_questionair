@@ -415,16 +415,33 @@ function createPreloadVideoElement(slot) {
   }
 
   const video = document.createElement("video");
+  const videoKey = getVideoCacheKey(slot.video);
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
   video.preload = "auto";
   video.disablePictureInPicture = true;
   video.hidden = true;
+  if (videoKey) {
+    video.dataset.videoCacheKey = videoKey;
+  }
   video.src = descriptor.url;
   moveVideoToPreloadBin(video);
   video.load();
   return video;
+}
+
+function isManagedPreloadVideoElement(video) {
+  if (!video) {
+    return false;
+  }
+
+  const videoKey = String(video.dataset.videoCacheKey || "").trim();
+  if (!videoKey) {
+    return false;
+  }
+
+  return runtime.preloadedFileVideos.get(videoKey) === video;
 }
 
 function attachPreparedVideoElement(card, slot, descriptor) {
@@ -1187,7 +1204,8 @@ function createFileVideoController(card, descriptor, options = {}) {
   fileVideo.disablePictureInPicture = true;
   placeholder.hidden = fileVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 
-  if (!fileVideo.currentSrc || fileVideo.currentSrc !== descriptor.url) {
+  const assignedSrc = String(fileVideo.getAttribute("src") || "").trim();
+  if (assignedSrc !== descriptor.url) {
     placeholder.hidden = false;
     fileVideo.src = descriptor.url;
     fileVideo.load();
@@ -1235,6 +1253,10 @@ function createFileVideoController(card, descriptor, options = {}) {
         fileVideo.currentTime = 0;
       } catch (error) {
         console.debug("Failed to reset local video during destroy", error);
+      }
+      if (isManagedPreloadVideoElement(fileVideo)) {
+        moveVideoToPreloadBin(fileVideo);
+        return;
       }
       fileVideo.removeAttribute("src");
       fileVideo.load();
