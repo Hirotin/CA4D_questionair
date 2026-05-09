@@ -380,11 +380,13 @@ function waitForFileVideoReady(video) {
 
   return new Promise((resolve) => {
     const finish = () => {
+      window.clearTimeout(timeoutId);
       video.removeEventListener("loadeddata", finish);
       video.removeEventListener("canplay", finish);
       video.removeEventListener("error", finish);
       resolve();
     };
+    const timeoutId = window.setTimeout(finish, 1800);
 
     video.addEventListener("loadeddata", finish, { once: true });
     video.addEventListener("canplay", finish, { once: true });
@@ -556,7 +558,9 @@ async function primePreparedRoundPlayback(questionPlan, shapeRound) {
     return;
   }
 
-  await ensureQuestionRoundPrepared(questionPlan, shapeRound);
+  void ensureQuestionRoundPrepared(questionPlan, shapeRound).catch((error) => {
+    console.debug("Background preparation failed", error);
+  });
   await Promise.all(
     (shapeRound.slots || []).map(async (slot) => {
       const descriptor = getVideoDescriptor(slot.video);
@@ -1584,29 +1588,15 @@ async function enterQuestionIntro() {
     elements.referencePanel.innerHTML = "";
     elements.referencePanel.hidden = true;
   }
-  state.introLoading = true;
-  state.introReady = false;
+  state.introLoading = false;
+  state.introReady = true;
   state.phase = "questionIntro";
   renderQuestionIntroState();
   renderAppPhase();
 
-  try {
-    await ensureQuestionRoundPrepared(getCurrentQuestionPlan(), getCurrentShapeRound());
-    state.introReady = true;
-  } catch (error) {
+  void ensureQuestionRoundPrepared(getCurrentQuestionPlan(), getCurrentShapeRound()).catch((error) => {
     console.debug("Failed to prepare the current shape round", error);
-    showToast(
-      bilingual(
-        "次の動画セットの準備に失敗しました。もう一度お試しください。",
-        "Failed to prepare the next video set. Please try again."
-      ),
-      4800,
-    );
-  } finally {
-    state.introLoading = false;
-    renderQuestionIntroState();
-    renderAppPhase();
-  }
+  });
 }
 
 async function beginCurrentQuestion() {
