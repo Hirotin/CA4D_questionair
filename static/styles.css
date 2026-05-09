@@ -1,10 +1,13 @@
 :root {
   --bg-top: #f5ecd8;
   --bg-bottom: #d8ebe4;
-  --video-frame-size: 256px;
-  --video-card-width: 284px;
-  --reference-card-width: 284px;
+  --video-frame-width: calc(256px * 5);
+  --video-frame-height: 256px;
+  --video-card-width: min(calc(var(--video-frame-width) + 28px), 100%);
+  --reference-card-width: min(calc(var(--video-frame-width) + 28px), 100%);
   --lane-gap: 12px;
+  --lane-visible-count: 3;
+  --video-card-stack-height: 390px;
   --lane-slot-count: 20;
   --card: rgba(255, 255, 255, 0.88);
   --card-strong: rgba(255, 255, 255, 0.97);
@@ -408,19 +411,27 @@ button {
 }
 
 .lane-scroll {
-  overflow-x: auto;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 8px;
   padding-bottom: 10px;
+  max-height: min(
+    calc((var(--video-card-stack-height) * var(--lane-visible-count)) + (var(--lane-gap) * (var(--lane-visible-count) - 1))),
+    calc(100vh - 360px)
+  );
 }
 
 .lane-grid {
-  min-width: calc((var(--video-card-width) * var(--lane-slot-count)) + (var(--lane-gap) * (var(--lane-slot-count) - 1)));
   display: grid;
-  grid-template-columns: repeat(var(--lane-slot-count), var(--video-card-width));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--lane-gap);
-  justify-content: start;
+  justify-items: center;
 }
 
 .video-card {
+  width: var(--video-card-width);
+  max-width: 100%;
   border-radius: var(--radius-lg);
   padding: 14px;
   background: var(--card-strong);
@@ -441,9 +452,8 @@ button {
 
 .video-frame {
   position: relative;
-  width: var(--video-frame-size);
-  height: var(--video-frame-size);
-  min-height: var(--video-frame-size);
+  width: min(var(--video-frame-width), 100%);
+  aspect-ratio: 5 / 1;
   border-radius: 18px;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(10, 106, 109, 0.22), rgba(18, 36, 36, 0.78));
@@ -459,7 +469,7 @@ button {
 }
 
 .video-frame video {
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   pointer-events: none;
 }

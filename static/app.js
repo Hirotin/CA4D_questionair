@@ -217,28 +217,7 @@ function formatShapePrompt(promptText) {
 }
 
 function enableWheelHorizontalScroll() {
-  const scroller = elements.laneScroll;
-  if (!scroller || scroller.dataset.wheelBound === "true") {
-    return;
-  }
-
-  scroller.dataset.wheelBound = "true";
-  scroller.addEventListener(
-    "wheel",
-    (event) => {
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
-        return;
-      }
-
-      if (scroller.scrollWidth <= scroller.clientWidth) {
-        return;
-      }
-
-      event.preventDefault();
-      scroller.scrollLeft += event.deltaY;
-    },
-    { passive: false },
-  );
+  return;
 }
 
 function resetLaneScrollPosition() {
@@ -248,6 +227,7 @@ function resetLaneScrollPosition() {
   }
 
   scroller.scrollLeft = 0;
+  scroller.scrollTop = 0;
 }
 
 function centerCardInLane(card, behavior = "smooth") {
@@ -256,14 +236,14 @@ function centerCardInLane(card, behavior = "smooth") {
     return;
   }
 
-  const cardLeft = card.offsetLeft;
-  const cardWidth = card.offsetWidth;
-  const targetLeft = cardLeft - ((scroller.clientWidth - cardWidth) / 2);
-  const maxLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-  const clampedLeft = Math.max(0, Math.min(targetLeft, maxLeft));
+  const cardTop = card.offsetTop;
+  const cardHeight = card.offsetHeight;
+  const targetTop = cardTop - ((scroller.clientHeight - cardHeight) / 2);
+  const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const clampedTop = Math.max(0, Math.min(targetTop, maxTop));
 
   scroller.scrollTo({
-    left: clampedLeft,
+    top: clampedTop,
     behavior,
   });
 }
