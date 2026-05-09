@@ -1156,11 +1156,14 @@ function createUnavailableController(card, message) {
   };
 }
 
-function createFileVideoController(card, descriptor) {
+function createFileVideoController(card, descriptor, options = {}) {
   const placeholder = card.querySelector('[data-role="placeholder"]');
+  const reusePrepared = options.reusePrepared !== false;
   const slotIndex = Number(card.dataset.slotIndex || "-1");
-  const slot = state.slots.find((item) => item.slotIndex === slotIndex);
-  const fileVideo = slot
+  const slot = reusePrepared
+    ? state.slots.find((item) => item.slotIndex === slotIndex)
+    : null;
+  const fileVideo = reusePrepared && slot
     ? attachPreparedVideoElement(card, slot, descriptor)
     : card.querySelector('[data-role="video"]');
   const hidePlaceholder = () => {
@@ -1238,13 +1241,13 @@ function createFileVideoController(card, descriptor) {
   };
 }
 
-function createMediaController(slot, card, playbackToken) {
+function createMediaController(slot, card, options = {}) {
   const descriptor = getVideoDescriptor(slot.video);
   if (descriptor.type === "missing") {
     return createUnavailableController(card, bilingual("動画情報が見つかりません。", "Video information was not found."));
   }
 
-  return createFileVideoController(card, descriptor);
+  return createFileVideoController(card, descriptor, options);
 }
 
 function createReferenceCard(slot) {
@@ -1288,7 +1291,7 @@ async function renderReferencePanel() {
   }
 
   const referenceSlot = {
-    slotIndex: currentShapeRound.referenceSlotIndex ?? 0,
+    slotIndex: -1,
     slotLabel: currentShapeRound.referenceSlotLabel || state.config.referenceSlotLabel || bilingual("動画0", "Video 0"),
     video: currentShapeRound.referenceVideo,
   };
@@ -1297,12 +1300,12 @@ async function renderReferencePanel() {
   elements.referencePanel.appendChild(card);
   elements.referencePanel.hidden = false;
 
-  const controller = createMediaController(referenceSlot, card, runtime.playbackToken, {
-    reusePreloaded: false,
+  const controller = createMediaController(referenceSlot, card, {
+    reusePrepared: false,
   });
   runtime.referenceController = controller;
 
-  const sourceController = runtime.mediaControllers.get(referenceSlot.slotIndex);
+  const sourceController = runtime.mediaControllers.get(currentShapeRound.referenceSlotIndex);
   try {
     await Promise.all([
       Promise.resolve(sourceController?.ready).catch(() => undefined),
@@ -1336,7 +1339,7 @@ function renderVideoGrid() {
   state.slots.forEach((slot) => {
     const card = createVideoCard(slot);
     elements.videoGrid.appendChild(card);
-    runtime.mediaControllers.set(slot.slotIndex, createMediaController(slot, card, playbackToken));
+    runtime.mediaControllers.set(slot.slotIndex, createMediaController(slot, card));
   });
 
   state.slots.forEach(updateVideoCardRating);
