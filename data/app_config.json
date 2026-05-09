@@ -81,6 +81,10 @@
     {
       "id": "text_alignment",
       "text": "テキスト整合性「Please rate the text alignment」"
+    },
+    {
+      "id": "method_diversity",
+      "text": "各手法の多様性を1から5で評価してください。自然さとは独立に判断してください。「Please rate the diversity of each method from 1 to 5, independently of naturalness.」"
     }
   ],
   "randomVideoDatabase": {

@@ -643,6 +643,15 @@ function getScaleHintsForQuestion(question = getCurrentQuestion()) {
       bilingual("とても整合している", "Very aligned"),
     ];
   }
+  if (questionId === "method_diversity") {
+    return [
+      bilingual("多様性がとても低い", "Very low diversity"),
+      bilingual("多様性がやや低い", "Somewhat low diversity"),
+      bilingual("どちらでもない", "Neutral"),
+      bilingual("多様性がやや高い", "Somewhat high diversity"),
+      bilingual("多様性がとても高い", "Very high diversity"),
+    ];
+  }
   return state.config?.scaleHints || [
     bilingual("低い", "Low"),
     bilingual("やや低い", "Somewhat low"),
