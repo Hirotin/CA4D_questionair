@@ -556,33 +556,34 @@ async function primePreparedRoundPlayback(questionPlan, shapeRound) {
     return;
   }
 
-  await ensureQuestionRoundPrepared(questionPlan, shapeRound);
-  await Promise.all(
-    (shapeRound.slots || []).map(async (slot) => {
-      const descriptor = getVideoDescriptor(slot.video);
-      const videoKey = getVideoCacheKey(slot.video);
-      const preparedVideo = videoKey ? runtime.preloadedFileVideos.get(videoKey) : null;
-      if (!preparedVideo || descriptor.type !== "file") {
-        return;
-      }
-
-      try {
-        preparedVideo.currentTime = 0;
-      } catch (error) {
-        console.debug("Failed to reset prepared video", error);
-      }
-
-      try {
-        await preparedVideo.play();
-      } catch (error) {
-        if (isAutoplayBlockError(error)) {
-          handleAutoplayBlocked();
-        } else {
-          console.debug("Prepared video playback failed", error);
+  void ensureQuestionRoundPrepared(questionPlan, shapeRound)
+    .then(() => {
+      (shapeRound.slots || []).forEach((slot) => {
+        const descriptor = getVideoDescriptor(slot.video);
+        const videoKey = getVideoCacheKey(slot.video);
+        const preparedVideo = videoKey ? runtime.preloadedFileVideos.get(videoKey) : null;
+        if (!preparedVideo || descriptor.type !== "file") {
+          return;
         }
-      }
-    }),
-  );
+
+        try {
+          preparedVideo.currentTime = 0;
+        } catch (error) {
+          console.debug("Failed to reset prepared video", error);
+        }
+
+        Promise.resolve(preparedVideo.play()).catch((error) => {
+          if (isAutoplayBlockError(error)) {
+            handleAutoplayBlocked();
+          } else {
+            console.debug("Prepared video playback failed", error);
+          }
+        });
+      });
+    })
+    .catch((error) => {
+      console.debug("Background preparation failed", error);
+    });
 }
 
 function primePlaybackControllers() {
