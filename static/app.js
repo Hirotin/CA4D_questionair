@@ -826,8 +826,10 @@ function renderQuestionHeading(element, question) {
   const text = question?.text || bilingual("読み込み中...", "Loading...");
   const parts = splitBilingualText(text);
   const isMultiline = Boolean(parts.english);
+  const isDiversityQuestion = question?.id === "method_diversity";
   element.style.fontSize = "";
   element.classList.toggle("is-multiline", isMultiline);
+  element.classList.toggle("is-diversity-question", isDiversityQuestion);
 
   if (!isMultiline) {
     element.textContent = text;

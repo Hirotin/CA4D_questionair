@@ -147,9 +147,15 @@ body::before {
   text-wrap: balance;
 }
 
+.intro-question-text.is-diversity-question,
+.question-title.is-diversity-question {
+  font-size: clamp(1.35rem, 2.45vw, 2.9rem);
+  line-height: 1.42;
+}
+
 .question-text-english {
   display: block;
-  margin-top: 0.2em;
+  margin-top: 0.42em;
 }
 
 .intro-button {
