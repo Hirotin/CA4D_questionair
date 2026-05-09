@@ -67,6 +67,10 @@ def load_csv_rows(path: Path) -> list[dict[str, str]]:
         return [{str(key): str(value or "") for key, value in row.items()} for row in reader]
 
 
+def deep_clone(value: Any) -> Any:
+    return json.loads(json.dumps(value, ensure_ascii=False))
+
+
 def slugify_identifier(value: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9]+", "-", str(value).strip()).strip("-").lower()
     return normalized or "video"
@@ -282,6 +286,49 @@ def load_shape_survey_settings(config: dict[str, Any]) -> dict[str, Any]:
             raw_settings.get("referenceSlotLabel", bilingual("動画0", "Video 0"))
         ).strip()
         or bilingual("動画0", "Video 0"),
+    }
+
+
+def load_diversity_survey_settings(config: dict[str, Any]) -> dict[str, Any]:
+    raw_settings = config.get("diversitySurvey")
+    if not isinstance(raw_settings, dict):
+        raw_settings = {}
+
+    raw_videos = raw_settings.get("videos", [])
+    if raw_videos is None:
+        raw_videos = []
+    if not isinstance(raw_videos, list):
+        raise AppError(
+            bilingual(
+                "diversitySurvey.videos は配列で指定してください。",
+                "diversitySurvey.videos must be an array.",
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
+
+    storage_settings = get_video_storage_settings(config)
+    videos = [
+        normalize_video_entry(
+            video,
+            default_source_label=bilingual("多様性評価動画", "Diversity Evaluation Video"),
+            public_base_url=storage_settings["publicBaseUrl"],
+        )
+        for video in raw_videos
+    ]
+    layout = str(raw_settings.get("layout", "vertical")).strip().lower() or "vertical"
+    if layout not in {"horizontal", "vertical"}:
+        layout = "vertical"
+
+    return {
+        "layout": layout,
+        "videos": videos,
+        "roundLabel": str(
+            raw_settings.get(
+                "roundLabel",
+                bilingual("多様性評価セット", "Diversity Rating Set"),
+            )
+        ).strip()
+        or bilingual("多様性評価セット", "Diversity Rating Set"),
     }
 
 
@@ -581,7 +628,7 @@ def create_access_session(
     *,
     config: dict[str, Any],
     user_name: str,
-    shape_rounds: list[dict[str, Any]],
+    question_plans: list[dict[str, Any]],
     random_source: dict[str, Any],
 ) -> str:
     settings = get_access_control_settings(config)
@@ -591,8 +638,8 @@ def create_access_session(
     with _session_lock:
         _access_sessions[token] = {
             "userName": user_name,
-            "shapeRounds": json.loads(json.dumps(shape_rounds, ensure_ascii=False)),
-            "randomSource": json.loads(json.dumps(random_source, ensure_ascii=False)),
+            "questionPlans": deep_clone(question_plans),
+            "randomSource": deep_clone(random_source),
             "expiresAt": expires_at,
         }
     return token
@@ -604,13 +651,13 @@ def get_access_session(token: str) -> dict[str, Any] | None:
         session = _access_sessions.get(token)
         if session is None:
             return None
-        return json.loads(json.dumps(session, ensure_ascii=False))
+        return deep_clone(session)
 
 
 def update_access_session_slots(
     token: str,
     *,
-    shape_rounds: list[dict[str, Any]],
+    question_plans: list[dict[str, Any]],
     random_source: dict[str, Any],
 ) -> None:
     cleanup_expired_access_sessions()
@@ -618,8 +665,8 @@ def update_access_session_slots(
         session = _access_sessions.get(token)
         if session is None:
             return
-        session["shapeRounds"] = json.loads(json.dumps(shape_rounds, ensure_ascii=False))
-        session["randomSource"] = json.loads(json.dumps(random_source, ensure_ascii=False))
+        session["questionPlans"] = deep_clone(question_plans)
+        session["randomSource"] = deep_clone(random_source)
 
 
 def require_access_session(payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any] | None:
@@ -955,7 +1002,6 @@ def sort_shape_ids(shape_ids: list[str], preferred_order: list[str]) -> list[str
 def build_shape_rounds(config: dict[str, Any]) -> dict[str, Any]:
     config = config or load_config()
     random_catalog = load_random_video_catalog(config)
-    export_video_links_csv(videos=random_catalog["videos"])
 
     shape_settings = load_shape_survey_settings(config)
     expected_slots = int(config["slots"])
@@ -1031,6 +1077,7 @@ def build_shape_rounds(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "shapeRounds": shape_rounds,
         "slots": shape_rounds[0]["slots"] if shape_rounds else [],
+        "catalogVideos": random_catalog["videos"],
         "randomSource": {
             "label": random_catalog["label"],
             "hint": bilingual(
@@ -1042,9 +1089,109 @@ def build_shape_rounds(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def clone_rounds_for_question(
+    *,
+    question_id: str,
+    rounds: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    cloned_rounds = deep_clone(rounds)
+    for round_index, round_info in enumerate(cloned_rounds):
+        shape_id = str(round_info.get("shapeId", "")).strip() or str(round_index)
+        round_info["shapeIndex"] = round_index
+        round_info["roundKey"] = f"{question_id}:{shape_id}"
+    return cloned_rounds
+
+
+def build_diversity_rounds(config: dict[str, Any], *, question_id: str) -> dict[str, Any]:
+    settings = load_diversity_survey_settings(config)
+    if not settings["videos"]:
+        raise AppError(
+            bilingual(
+                "多様性設問用の動画が設定されていません。",
+                "No videos are configured for the diversity question.",
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
+
+    slots: list[dict[str, Any]] = []
+    for slot_index, video in enumerate(settings["videos"]):
+        slots.append(
+            {
+                "slotIndex": slot_index,
+                "slotLabel": bilingual(f"動画{slot_index + 1}", f"Video {slot_index + 1}"),
+                "mode": "diversity-batch",
+                "modeLabel": bilingual("多様性比較セット", "Diversity comparison set"),
+                "video": video,
+            }
+        )
+
+    rounds = [
+        {
+            "shapeIndex": 0,
+            "shapeId": "method-diversity",
+            "shapeLabel": settings["roundLabel"],
+            "referenceSlotIndex": -1,
+            "referenceSlotLabel": "",
+            "referenceMethodCode": "",
+            "referenceVideo": None,
+            "slots": slots,
+        }
+    ]
+    rounds = clone_rounds_for_question(question_id=question_id, rounds=rounds)
+
+    return {
+        "layout": settings["layout"],
+        "rounds": rounds,
+        "videos": settings["videos"],
+    }
+
+
+def build_question_plans(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = config or load_config()
+    questions = load_questions(config)
+    standard_plan = build_shape_rounds(config)
+    exported_videos = list(standard_plan["catalogVideos"])
+
+    question_plans: list[dict[str, Any]] = []
+    for question in questions:
+        if question["id"] == "method_diversity":
+            diversity_plan = build_diversity_rounds(config, question_id=question["id"])
+            question_plans.append(
+                {
+                    "questionId": question["id"],
+                    "layout": diversity_plan["layout"],
+                    "rounds": diversity_plan["rounds"],
+                    "slotCount": len(diversity_plan["rounds"][0]["slots"]) if diversity_plan["rounds"] else 0,
+                }
+            )
+            exported_videos.extend(diversity_plan["videos"])
+            continue
+
+        question_plans.append(
+            {
+                "questionId": question["id"],
+                "layout": "horizontal",
+                "rounds": clone_rounds_for_question(
+                    question_id=question["id"],
+                    rounds=standard_plan["shapeRounds"],
+                ),
+                "slotCount": int(config["slots"]),
+            }
+        )
+
+    export_video_links_csv(videos=exported_videos)
+
+    return {
+        "questionPlans": question_plans,
+        "randomSource": standard_plan["randomSource"],
+        "standardShapeRounds": standard_plan["shapeRounds"],
+        "standardSlotCount": int(config["slots"]),
+    }
+
+
 def resolve_configured_slots(config: dict[str, Any] | None = None) -> dict[str, Any]:
     config = config or load_config()
-    return build_shape_rounds(config)
+    return build_question_plans(config)
 
 
 def build_submission_rows(validated: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -1375,21 +1522,23 @@ def start_survey_session(payload: dict[str, Any]) -> dict[str, Any]:
     if not readiness["ok"]:
         raise AppError(readiness["message"], HTTPStatus.SERVICE_UNAVAILABLE)
 
-    resolved = build_shape_rounds(config)
+    resolved = build_question_plans(config)
     session_token = create_access_session(
         config=config,
         user_name=user_name,
-        shape_rounds=resolved["shapeRounds"],
+        question_plans=resolved["questionPlans"],
         random_source=resolved["randomSource"],
     )
+    first_question_plan = resolved["questionPlans"][0] if resolved["questionPlans"] else {"rounds": []}
 
     return {
         "message": readiness["message"],
         "status": readiness["status"],
         "sessionToken": session_token,
         "randomSource": resolved["randomSource"],
-        "shapeRounds": resolved["shapeRounds"],
-        "slots": resolved["slots"],
+        "questionPlans": resolved["questionPlans"],
+        "shapeRounds": first_question_plan.get("rounds", []),
+        "slots": first_question_plan.get("rounds", [{}])[0].get("slots", []) if first_question_plan.get("rounds") else [],
     }
 
 
@@ -1397,16 +1546,21 @@ def build_bootstrap_payload() -> dict[str, Any]:
     config = load_config()
     questions = load_questions(config)
     access_control = get_access_control_settings(config)
-    shape_plan = build_shape_rounds(config)
+    question_plan_bundle = build_question_plans(config)
     shape_settings = load_shape_survey_settings(config)
     apps_script_settings = get_apps_script_sync_settings(config)
+    question_plans = question_plan_bundle["questionPlans"]
+    first_question_plan = question_plans[0] if question_plans else {"rounds": []}
+    standard_round_count = len(question_plan_bundle["standardShapeRounds"])
 
     return {
         "title": config["title"],
         "subtitle": config["subtitle"],
         "slots": int(config["slots"]),
-        "shapesPerQuestion": len(shape_plan["shapeRounds"]),
+        "shapesPerQuestion": standard_round_count,
         "questions": questions,
+        "questionPlans": question_plans,
+        "shapeRounds": first_question_plan.get("rounds", []),
         "scaleLabels": list(config.get("scaleLabels", ["1", "2", "3", "4", "5"])),
         "scaleHints": list(
             config.get(
@@ -1421,12 +1575,18 @@ def build_bootstrap_payload() -> dict[str, Any]:
             )
         ),
         "assignmentSummary": bilingual(
-            f"1つの質問につき {len(shape_plan['shapeRounds'])} 形状を順番に評価します。各形状では {config['slots']} 本の動画を同時に比較し、すべて回答し終えたら次の質問へ進みます。",
-            f"For each question, you will rate {len(shape_plan['shapeRounds'])} shapes in sequence. Each shape shows {config['slots']} videos at once, and the next question starts only after all shapes are answered.",
+            (
+                f"前半の設問では {standard_round_count} 形状を順番に評価し、各形状では {config['slots']} 本の動画を横スクロールで比較します。"
+                "最後の多様性設問では 3 本の横長動画を縦に比較します。"
+            ),
+            (
+                f"For the earlier questions, you will rate {standard_round_count} shapes in sequence, comparing {config['slots']} videos per shape in a horizontal row. "
+                "For the final diversity question, you will rate three wide videos in a vertical list."
+            ),
         ),
         "referenceSlotLabel": shape_settings["referenceSlotLabel"],
         "referenceMethodCode": shape_settings["referenceMethodCode"],
-        "randomSource": shape_plan["randomSource"],
+        "randomSource": question_plan_bundle["randomSource"],
         "slotsResolved": [],
         "accessControl": {
             "enabled": bool(access_control["enabled"]),
@@ -1440,6 +1600,7 @@ def validate_submission(payload: dict[str, Any], session: dict[str, Any] | None 
     config = load_config()
     questions = load_questions(config)
     question_map = {question["id"]: question["text"] for question in questions}
+    question_order = {question["id"]: index for index, question in enumerate(questions)}
     user_name = str(payload.get("userName", "")).strip()
     if not user_name:
         raise AppError(bilingual("User名は必須です。", "User name is required."))
@@ -1455,27 +1616,48 @@ def validate_submission(payload: dict[str, Any], session: dict[str, Any] | None 
     responses = payload.get("responses")
     if not isinstance(responses, list) or not responses:
         raise AppError(bilingual("送信データに回答情報がありません。", "The submission payload does not contain any responses."))
-    session_rounds = {
-        int(round_info["shapeIndex"]): round_info
-        for round_info in (session or {}).get("shapeRounds", [])
-        if isinstance(round_info, dict) and "shapeIndex" in round_info
+    session_question_plans = {
+        str(plan.get("questionId", "")).strip(): plan
+        for plan in (session or {}).get("questionPlans", [])
+        if isinstance(plan, dict) and str(plan.get("questionId", "")).strip()
     }
-    shape_round_count = len(session_rounds)
-    if session is not None and shape_round_count <= 0:
+    if session is not None and not session_question_plans:
         raise AppError(
             bilingual(
-                "開始セッションに形状セットがありません。もう一度開始してください。",
-                "The start session does not contain shape sets. Start the survey again.",
+                "開始セッションに設問プランがありません。もう一度開始してください。",
+                "The start session does not contain question plans. Start the survey again.",
             ),
             HTTPStatus.UNAUTHORIZED,
         )
 
-    expected_responses = int(config["slots"]) * len(questions) * max(shape_round_count, 1)
+    expected_responses = 0
+    question_round_counts: dict[int, int] = {}
+    session_round_lookup: dict[tuple[int, int], dict[str, Any]] = {}
+    for question_index, question in enumerate(questions):
+        question_plan = session_question_plans.get(question["id"])
+        rounds = []
+        if question_plan is not None:
+            rounds = [
+                round_info
+                for round_info in question_plan.get("rounds", [])
+                if isinstance(round_info, dict)
+            ]
+        question_round_counts[question_index] = len(rounds)
+        for round_index, round_info in enumerate(rounds):
+            session_round_lookup[(question_index, round_index)] = round_info
+            expected_responses += len(
+                [
+                    slot
+                    for slot in round_info.get("slots", [])
+                    if isinstance(slot, dict) and "slotIndex" in slot
+                ]
+            )
+
     if len(responses) != expected_responses:
         raise AppError(
             bilingual(
-                f"回答数が不正です。{len(questions)} 問 x {shape_round_count} 形状 x {config['slots']} 本の合計 {expected_responses} 件必要です。",
-                f"Invalid number of responses. {expected_responses} responses are required for {len(questions)} questions x {shape_round_count} shapes x {config['slots']} videos.",
+                f"回答数が不正です。合計 {expected_responses} 件の回答が必要です。",
+                f"Invalid number of responses. A total of {expected_responses} responses is required.",
             )
         )
 
@@ -1495,19 +1677,28 @@ def validate_submission(payload: dict[str, Any], session: dict[str, Any] | None 
             raise AppError(bilingual("不正な動画番号が送信されました。", "An invalid video index was submitted."))
         if question_index < 0 or question_index >= len(questions):
             raise AppError(bilingual("不正な設問番号が送信されました。", "An invalid question index was submitted."))
-        if shape_index < 0 or shape_index >= shape_round_count:
-            raise AppError(bilingual("不正な形状番号が送信されました。", "An invalid shape index was submitted."))
 
         question_id = str(response.get("questionId", "")).strip()
         if question_id not in question_map:
             raise AppError(bilingual("不正な設問IDが送信されました。", "An invalid question ID was submitted."))
+        if question_order[question_id] != question_index:
+            raise AppError(
+                bilingual(
+                    "設問IDと設問番号が一致しません。",
+                    "The question ID does not match the question index.",
+                )
+            )
+
+        question_round_count = question_round_counts.get(question_index, 0)
+        if shape_index < 0 or shape_index >= question_round_count:
+            raise AppError(bilingual("不正な形状番号が送信されました。", "An invalid shape index was submitted."))
 
         seen_key = (question_id, shape_index, slot_index)
         if seen_key in seen_pairs:
             raise AppError(bilingual("同じ設問・形状・動画の回答が重複しています。", "Duplicate responses were submitted for the same question, shape, and video."))
         seen_pairs.add(seen_key)
 
-        session_round = session_rounds.get(shape_index)
+        session_round = session_round_lookup.get((question_index, shape_index))
         if session is not None and session_round is None:
             raise AppError(
                 bilingual(
@@ -1520,6 +1711,8 @@ def validate_submission(payload: dict[str, Any], session: dict[str, Any] | None 
             for slot in (session_round or {}).get("slots", [])
             if isinstance(slot, dict) and "slotIndex" in slot
         }
+        if slot_index < 0 or slot_index >= len(session_slots):
+            raise AppError(bilingual("不正な動画番号が送信されました。", "An invalid video index was submitted."))
         session_slot = session_slots.get(slot_index)
         if session is not None and session_slot is None:
             raise AppError(
@@ -1734,6 +1927,7 @@ class SurveyRequestHandler(BaseHTTPRequestHandler):
                         "status": result["status"],
                         "sessionToken": result["sessionToken"],
                         "randomSource": result["randomSource"],
+                        "questionPlans": result["questionPlans"],
                         "shapeRounds": result["shapeRounds"],
                         "slots": result["slots"],
                     }
@@ -1742,14 +1936,21 @@ class SurveyRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/resolve-slots":
                 config = load_config()
                 session = require_access_session(payload, config)
-                resolved = build_shape_rounds(config)
+                resolved = build_question_plans(config)
                 if session is not None:
                     update_access_session_slots(
                         str(payload.get("sessionToken", "")).strip(),
-                        shape_rounds=resolved["shapeRounds"],
+                        question_plans=resolved["questionPlans"],
                         random_source=resolved["randomSource"],
                     )
-                self.respond_json(resolved)
+                first_question_plan = resolved["questionPlans"][0] if resolved["questionPlans"] else {"rounds": []}
+                self.respond_json(
+                    {
+                        **resolved,
+                        "shapeRounds": first_question_plan.get("rounds", []),
+                        "slots": first_question_plan.get("rounds", [{}])[0].get("slots", []) if first_question_plan.get("rounds") else [],
+                    }
+                )
                 return
             if parsed.path == "/api/submissions":
                 result = save_submission_csv(

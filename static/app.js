@@ -1,5 +1,6 @@
 const state = {
   config: null,
+  questionPlans: [],
   slots: [],
   shapeRounds: [],
   answersByQuestion: [],
@@ -44,6 +45,7 @@ const elements = {
   accessPassword: document.getElementById("access-password"),
   startSurvey: document.getElementById("start-survey"),
   startReadinessStatus: document.getElementById("start-readiness-status"),
+  introInstruction: document.getElementById("intro-instruction"),
   introQuestionText: document.getElementById("intro-question-text"),
   beginQuestion: document.getElementById("begin-question"),
   adminNextIntro: document.getElementById("admin-next-intro"),
@@ -217,7 +219,27 @@ function formatShapePrompt(promptText) {
 }
 
 function enableWheelHorizontalScroll() {
-  return;
+  if (!elements.laneScroll || enableWheelHorizontalScroll.bound) {
+    return;
+  }
+
+  elements.laneScroll.addEventListener("wheel", (event) => {
+    if (getCurrentQuestionLayout() !== "horizontal") {
+      return;
+    }
+
+    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+      ? event.deltaY
+      : event.deltaX;
+    if (!delta) {
+      return;
+    }
+
+    event.preventDefault();
+    elements.laneScroll.scrollLeft += delta;
+  }, { passive: false });
+
+  enableWheelHorizontalScroll.bound = true;
 }
 
 function resetLaneScrollPosition() {
@@ -236,16 +258,22 @@ function centerCardInLane(card, behavior = "smooth") {
     return;
   }
 
-  const cardTop = card.offsetTop;
-  const cardHeight = card.offsetHeight;
-  const targetTop = cardTop - ((scroller.clientHeight - cardHeight) / 2);
-  const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-  const clampedTop = Math.max(0, Math.min(targetTop, maxTop));
+  if (getCurrentQuestionLayout() === "vertical") {
+    const cardTop = card.offsetTop;
+    const cardHeight = card.offsetHeight;
+    const targetTop = cardTop - ((scroller.clientHeight - cardHeight) / 2);
+    const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const clampedTop = Math.max(0, Math.min(targetTop, maxTop));
+    scroller.scrollTo({ top: clampedTop, behavior });
+    return;
+  }
 
-  scroller.scrollTo({
-    top: clampedTop,
-    behavior,
-  });
+  const cardLeft = card.offsetLeft;
+  const cardWidth = card.offsetWidth;
+  const targetLeft = cardLeft - ((scroller.clientWidth - cardWidth) / 2);
+  const maxLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+  const clampedLeft = Math.max(0, Math.min(targetLeft, maxLeft));
+  scroller.scrollTo({ left: clampedLeft, behavior });
 }
 
 function getVideoDescriptor(video) {
@@ -383,12 +411,43 @@ function createPreloadVideoElement(slot) {
   return video;
 }
 
-function ensureShapeRoundPrepared(shapeRound) {
-  if (!shapeRound) {
+function getQuestionPlanByIndex(questionIndex = state.currentQuestionIndex) {
+  return state.questionPlans[questionIndex] || null;
+}
+
+function getCurrentQuestionPlan() {
+  return getQuestionPlanByIndex(state.currentQuestionIndex);
+}
+
+function getQuestionRounds(questionIndex = state.currentQuestionIndex) {
+  return getQuestionPlanByIndex(questionIndex)?.rounds || [];
+}
+
+function getCurrentQuestionLayout() {
+  return getCurrentQuestionPlan()?.layout === "vertical" ? "vertical" : "horizontal";
+}
+
+function getRoundUnitLabels(questionPlan = getCurrentQuestionPlan()) {
+  if (questionPlan?.layout === "vertical") {
+    return { ja: "セット", en: "Set" };
+  }
+  return { ja: "形状", en: "Shape" };
+}
+
+function buildRoundCacheKey(questionPlan, shapeRound) {
+  if (!questionPlan || !shapeRound) {
+    return "";
+  }
+
+  return String(shapeRound.roundKey || `${questionPlan.questionId}:${shapeRound.shapeId || shapeRound.shapeIndex || 0}`);
+}
+
+function ensureQuestionRoundPrepared(questionPlan, shapeRound) {
+  if (!questionPlan || !shapeRound) {
     return Promise.resolve();
   }
 
-  const cacheKey = String(shapeRound.shapeIndex);
+  const cacheKey = buildRoundCacheKey(questionPlan, shapeRound);
   if (runtime.preparedShapeRounds.has(cacheKey)) {
     return runtime.preparedShapeRounds.get(cacheKey);
   }
@@ -422,16 +481,31 @@ function ensureShapeRoundPrepared(shapeRound) {
   return promise;
 }
 
-function getUpcomingShapeRound() {
-  return state.shapeRounds[state.currentShapeIndex + 1] || null;
+function getUpcomingRoundTarget() {
+  const currentQuestionPlan = getCurrentQuestionPlan();
+  if (!currentQuestionPlan) {
+    return null;
+  }
+
+  const nextRound = state.shapeRounds[state.currentShapeIndex + 1] || null;
+  if (nextRound) {
+    return { questionPlan: currentQuestionPlan, shapeRound: nextRound };
+  }
+
+  const nextQuestionPlan = getQuestionPlanByIndex(state.currentQuestionIndex + 1);
+  if (nextQuestionPlan?.rounds?.length) {
+    return { questionPlan: nextQuestionPlan, shapeRound: nextQuestionPlan.rounds[0] };
+  }
+
+  return null;
 }
 
 function warmUpcomingShapeRound() {
-  const upcomingShapeRound = getUpcomingShapeRound();
-  if (!upcomingShapeRound) {
+  const upcomingTarget = getUpcomingRoundTarget();
+  if (!upcomingTarget) {
     return;
   }
-  void ensureShapeRoundPrepared(upcomingShapeRound).catch((error) => {
+  void ensureQuestionRoundPrepared(upcomingTarget.questionPlan, upcomingTarget.shapeRound).catch((error) => {
     console.debug("Failed to warm the upcoming shape round", error);
   });
 }
@@ -642,10 +716,8 @@ function getScaleHintsForQuestion(question = getCurrentQuestion()) {
 }
 
 function buildEmptyAnswers() {
-  const questionCount = state.config?.questions?.length || 0;
-  const shapeCount = state.shapeRounds.length;
-  return Array.from({ length: questionCount }, () =>
-    Array.from({ length: shapeCount }, () => ({})),
+  return state.questionPlans.map((questionPlan) =>
+    Array.from({ length: questionPlan.rounds.length }, () => ({})),
   );
 }
 
@@ -656,10 +728,10 @@ function resetQuestionFlow() {
   state.introLoading = false;
   state.introReady = false;
   state.advancing = false;
-  syncSlotsFromCurrentShape();
+  syncShapeRoundsFromCurrentQuestion();
 }
 
-function setShapeRounds(shapeRounds) {
+function setQuestionPlans(questionPlans) {
   runtime.preparedShapeRounds.clear();
   runtime.preloadedFileVideos.forEach((video) => {
     try {
@@ -672,10 +744,32 @@ function setShapeRounds(shapeRounds) {
     }
   });
   runtime.preloadedFileVideos.clear();
-  state.shapeRounds = shapeRounds.map((shapeRound) => ({
-    ...shapeRound,
-    slots: (shapeRound.slots || []).map((slot) => ({ ...slot, loading: false })),
+  state.questionPlans = (questionPlans || []).map((questionPlan, questionIndex) => ({
+    ...questionPlan,
+    questionId: String(
+      questionPlan.questionId ||
+      state.config?.questions?.[questionIndex]?.id ||
+      `q${questionIndex + 1}`,
+    ),
+    layout: questionPlan.layout === "vertical" ? "vertical" : "horizontal",
+    rounds: (questionPlan.rounds || []).map((shapeRound, shapeIndex) => ({
+      ...shapeRound,
+      shapeIndex,
+      roundKey: String(
+        shapeRound.roundKey ||
+        `${questionPlan.questionId || `q${questionIndex + 1}`}:${shapeRound.shapeId || shapeIndex}`,
+      ),
+      slots: (shapeRound.slots || []).map((slot) => ({ ...slot, loading: false })),
+    })),
   }));
+  syncShapeRoundsFromCurrentQuestion();
+}
+
+function syncShapeRoundsFromCurrentQuestion() {
+  state.shapeRounds = getQuestionRounds(state.currentQuestionIndex);
+  if (state.currentShapeIndex >= state.shapeRounds.length) {
+    state.currentShapeIndex = Math.max(state.shapeRounds.length - 1, 0);
+  }
   syncSlotsFromCurrentShape();
 }
 
@@ -811,6 +905,9 @@ function renderAppPhase() {
   elements.questionIntroStage.hidden = !isIntroPhase;
   elements.surveyStage.hidden = !isSurveyPhase;
   elements.completionStage.hidden = !isCompletedPhase;
+  if (elements.surveyStage) {
+    elements.surveyStage.dataset.layout = getCurrentQuestionLayout();
+  }
 
   if (elements.accessPasswordField) {
     elements.accessPasswordField.hidden = !accessPasswordEnabled();
@@ -845,8 +942,21 @@ function renderAppPhase() {
   window.requestAnimationFrame(fitQuestionTextBlocks);
 }
 
+function buildIntroInstructionLines() {
+  const currentQuestionPlan = getCurrentQuestionPlan();
+  const slotCount = currentQuestionPlan?.rounds?.[0]?.slots?.length || state.config?.slots || 0;
+  return {
+    ja: `次のページに表示される${slotCount}個の動画について、それぞれ以下の設問に対する評価を1から5の数字で回答してください。`,
+    en: `For the ${slotCount} videos shown on the next page, please rate each one from 1 to 5 for the following question.`,
+  };
+}
+
 function renderQuestionIntroState() {
   const question = getCurrentQuestion();
+  const instruction = buildIntroInstructionLines();
+  if (elements.introInstruction) {
+    elements.introInstruction.innerHTML = `${escapeHtml(instruction.ja)}<br />${escapeHtml(`「${instruction.en}」`)}`;
+  }
   if (elements.introQuestionText) {
     elements.introQuestionText.textContent = question?.text || bilingual("読み込み中...", "Loading...");
   }
@@ -1101,6 +1211,9 @@ function renderVideoGrid() {
   runtime.autoplayWarningShown = false;
   cleanupMediaControllers();
   resetLaneScrollPosition();
+  if (elements.surveyStage) {
+    elements.surveyStage.dataset.layout = getCurrentQuestionLayout();
+  }
   elements.videoGrid.innerHTML = "";
 
   state.slots.forEach((slot) => {
@@ -1169,9 +1282,13 @@ function highlightMissingRatings() {
 
 function renderQuestionState() {
   const question = getCurrentQuestion();
+  const questionPlan = getCurrentQuestionPlan();
   const currentShapeRound = getCurrentShapeRound();
-  if (!question || !currentShapeRound) {
+  if (!question || !questionPlan || !currentShapeRound) {
     return;
+  }
+  if (elements.surveyStage) {
+    elements.surveyStage.dataset.layout = questionPlan.layout;
   }
   elements.questionCounter.textContent = bilingual(
     `質問 ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
@@ -1217,14 +1334,22 @@ function renderQuestionState() {
 }
 
 function updateProgress() {
+  const questionPlan = getCurrentQuestionPlan();
   const answeredCount = getAnsweredCountForCurrentQuestion();
   const shapeCount = state.shapeRounds.length || 1;
-  const totalSteps = (state.config?.questions?.length || 1) * shapeCount;
-  const currentStep = (state.currentQuestionIndex * shapeCount) + state.currentShapeIndex + 1;
-  elements.progressValue.textContent = `Q${state.currentQuestionIndex + 1} / ${state.config.questions.length} · S${state.currentShapeIndex + 1} / ${shapeCount}`;
+  const totalSteps = state.questionPlans.reduce(
+    (sum, plan) => sum + (plan.rounds?.length || 0),
+    0,
+  ) || 1;
+  const completedSteps = state.questionPlans
+    .slice(0, state.currentQuestionIndex)
+    .reduce((sum, plan) => sum + (plan.rounds?.length || 0), 0);
+  const currentStep = completedSteps + state.currentShapeIndex + 1;
+  const roundUnit = getRoundUnitLabels(questionPlan);
+  elements.progressValue.textContent = `Q${state.currentQuestionIndex + 1} / ${state.config.questions.length} · ${state.currentShapeIndex + 1} / ${shapeCount}`;
   elements.progressNote.textContent = bilingual(
-    `形状 ${state.currentShapeIndex + 1} / ${shapeCount} ・ ${answeredCount} / ${state.slots.length} 回答済み`,
-    `Shape ${state.currentShapeIndex + 1} / ${shapeCount} · ${answeredCount} / ${state.slots.length} answered`,
+    `${roundUnit.ja} ${state.currentShapeIndex + 1} / ${shapeCount} ・ ${answeredCount} / ${state.slots.length} 回答済み`,
+    `${roundUnit.en} ${state.currentShapeIndex + 1} / ${shapeCount} · ${answeredCount} / ${state.slots.length} answered`,
   );
   const progressRatio = totalSteps
     ? currentStep / totalSteps
@@ -1263,7 +1388,8 @@ function buildSubmissionPayload() {
 
   state.config.questions.forEach((question, questionIndex) => {
     const answerSets = state.answersByQuestion[questionIndex] || [];
-    state.shapeRounds.forEach((shapeRound, shapeIndex) => {
+    const questionRounds = getQuestionRounds(questionIndex);
+    questionRounds.forEach((shapeRound, shapeIndex) => {
       const answers = answerSets[shapeIndex] || {};
       shapeRound.slots.forEach((slot) => {
         const rating = answers[slot.slotIndex];
@@ -1348,7 +1474,7 @@ async function enterQuestionIntro() {
   renderAppPhase();
 
   try {
-    await ensureShapeRoundPrepared(getCurrentShapeRound());
+    await ensureQuestionRoundPrepared(getCurrentQuestionPlan(), getCurrentShapeRound());
     state.introReady = true;
   } catch (error) {
     console.debug("Failed to prepare the current shape round", error);
@@ -1399,7 +1525,7 @@ async function runStartReadinessCheck() {
       }),
     });
     state.sessionToken = String(response.sessionToken || "");
-    setShapeRounds(response.shapeRounds || []);
+    setQuestionPlans(response.questionPlans || []);
     resetQuestionFlow();
     const message =
       response.message ||
@@ -1474,7 +1600,7 @@ async function advanceSurveyPage({ allowIncomplete = false } = {}) {
     if (isLastShapeForQuestion()) {
       state.currentQuestionIndex += 1;
       state.currentShapeIndex = 0;
-      syncSlotsFromCurrentShape();
+      syncShapeRoundsFromCurrentQuestion();
       await enterQuestionIntro();
       return;
     }
@@ -1509,7 +1635,7 @@ async function bootstrap() {
   try {
     const payload = await fetchJson("/api/bootstrap");
     state.config = payload;
-    setShapeRounds(payload.shapeRounds || []);
+    setQuestionPlans(payload.questionPlans || []);
     resetQuestionFlow();
     setStartReadinessStatus(
       bilingual(

@@ -1,14 +1,15 @@
 :root {
   --bg-top: #f5ecd8;
   --bg-bottom: #d8ebe4;
-  --video-frame-width: calc(256px * 5);
-  --video-frame-height: 256px;
-  --video-card-width: min(calc(var(--video-frame-width) + 28px), 100%);
-  --reference-card-width: min(calc(var(--video-frame-width) + 28px), 100%);
+  --standard-video-frame-width: 256px;
+  --standard-video-frame-aspect-ratio: 1 / 1;
+  --standard-video-card-width: 284px;
+  --diversity-video-frame-width: calc(256px * 5);
+  --diversity-video-frame-aspect-ratio: 5 / 1;
+  --diversity-video-card-width: min(calc(var(--diversity-video-frame-width) + 28px), 100%);
   --lane-gap: 12px;
   --lane-visible-count: 3;
-  --video-card-stack-height: 390px;
-  --lane-slot-count: 20;
+  --diversity-video-card-stack-height: 390px;
   --card: rgba(255, 255, 255, 0.88);
   --card-strong: rgba(255, 255, 255, 0.97);
   --ink: #122424;
@@ -273,6 +274,10 @@ button {
 }
 
 .survey-stage {
+  --video-frame-width: var(--standard-video-frame-width);
+  --video-frame-aspect-ratio: var(--standard-video-frame-aspect-ratio);
+  --video-card-width: var(--standard-video-card-width);
+  --reference-card-width: var(--standard-video-card-width);
   width: min(100%, calc(100vw - 48px));
   min-height: calc(100vh - 48px);
   border-radius: var(--radius-xl);
@@ -412,21 +417,19 @@ button {
 
 .lane-scroll {
   width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding-right: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-right: 0;
   padding-bottom: 10px;
-  max-height: min(
-    calc((var(--video-card-stack-height) * var(--lane-visible-count)) + (var(--lane-gap) * (var(--lane-visible-count) - 1))),
-    calc(100vh - 360px)
-  );
+  max-height: none;
 }
 
 .lane-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: var(--video-card-width);
   gap: var(--lane-gap);
-  justify-items: center;
+  justify-content: start;
 }
 
 .video-card {
@@ -453,7 +456,7 @@ button {
 .video-frame {
   position: relative;
   width: min(var(--video-frame-width), 100%);
-  aspect-ratio: 5 / 1;
+  aspect-ratio: var(--video-frame-aspect-ratio);
   border-radius: 18px;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(10, 106, 109, 0.22), rgba(18, 36, 36, 0.78));
@@ -472,6 +475,30 @@ button {
   object-fit: contain;
   display: block;
   pointer-events: none;
+}
+
+.survey-stage[data-layout="vertical"] {
+  --video-frame-width: var(--diversity-video-frame-width);
+  --video-frame-aspect-ratio: var(--diversity-video-frame-aspect-ratio);
+  --video-card-width: var(--diversity-video-card-width);
+  --reference-card-width: var(--diversity-video-card-width);
+}
+
+.survey-stage[data-layout="vertical"] .lane-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 8px;
+  max-height: min(
+    calc((var(--diversity-video-card-stack-height) * var(--lane-visible-count)) + (var(--lane-gap) * (var(--lane-visible-count) - 1))),
+    calc(100vh - 360px)
+  );
+}
+
+.survey-stage[data-layout="vertical"] .lane-grid {
+  grid-auto-flow: row;
+  grid-auto-columns: unset;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
 }
 
 .video-placeholder {

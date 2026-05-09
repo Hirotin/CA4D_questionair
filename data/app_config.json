@@ -1,6 +1,6 @@
 {
   "title": "動画アンケートスタジオ「Video Survey Studio」",
-  "subtitle": "1つの質問につき7形状を順番に評価し、各形状では20手法の動画を横スクロールで比較します。「For each question, you will rate seven shapes in sequence, comparing twenty method videos per shape in a horizontally scrollable row.」動画の並び順は形状ごとにランダムです。「The twenty videos are shuffled for each shape.」",
+  "subtitle": "前半の設問では7形状を順番に評価し、各形状では20手法の動画を横スクロールで比較します。最後の多様性設問では3本の横長動画を縦に比較します。「For the earlier questions, you will rate seven shapes in sequence, comparing twenty method videos per shape in a horizontal row. For the final diversity question, you will rate three wide videos in a vertical list.」",
   "slots": 20,
   "scaleLabels": ["1", "2", "3", "4", "5"],
   "scaleHints": [
@@ -64,6 +64,51 @@
     "shapeOrder": ["1013", "1047", "1143", "1189", "1230", "1232", "1445"],
     "referenceMethodCode": "0011",
     "referenceSlotLabel": "動画0「Video 0」"
+  },
+  "diversitySurvey": {
+    "layout": "vertical",
+    "roundLabel": "多様性評価セット「Diversity Rating Set」",
+    "videos": [
+      {
+        "id": "diversity-anymole",
+        "title": "Method Diversity / anymole",
+        "description": "Diversity evaluation video for anymole.",
+        "objectKey": "method_diversity/anymole_front0_random5_purple_hstack_256.mp4",
+        "url": "",
+        "sourceLabel": "多様性評価動画「Diversity Evaluation Video」",
+        "videoGroup": "R2-METHOD-DIVERSITY",
+        "videoCode": "DIVERSITY-001",
+        "methodName": "anymole",
+        "sampleName": "method_diversity",
+        "promptText": ""
+      },
+      {
+        "id": "diversity-key-best985",
+        "title": "Method Diversity / key_best985",
+        "description": "Diversity evaluation video for key_best985.",
+        "objectKey": "method_diversity/key_best985_front0_random5_purple_hstack_256.mp4",
+        "url": "",
+        "sourceLabel": "多様性評価動画「Diversity Evaluation Video」",
+        "videoGroup": "R2-METHOD-DIVERSITY",
+        "videoCode": "DIVERSITY-002",
+        "methodName": "key_best985",
+        "sampleName": "method_diversity",
+        "promptText": ""
+      },
+      {
+        "id": "diversity-framepack",
+        "title": "Method Diversity / framepack",
+        "description": "Diversity evaluation video for framepack.",
+        "objectKey": "method_diversity/framepack_seed0000_0004_front_sampled16_hstack_256.mp4",
+        "url": "",
+        "sourceLabel": "多様性評価動画「Diversity Evaluation Video」",
+        "videoGroup": "R2-METHOD-DIVERSITY",
+        "videoCode": "DIVERSITY-003",
+        "methodName": "framepack",
+        "sampleName": "method_diversity",
+        "promptText": ""
+      }
+    ]
   },
   "questions": [
     {
