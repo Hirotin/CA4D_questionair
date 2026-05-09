@@ -108,7 +108,7 @@ const PROMPT_TRANSLATIONS = {
 };
 
 function fitTextToSingleLine(element, options = {}) {
-  if (!element || element.hidden) {
+  if (!element || element.hidden || element.classList.contains("is-multiline")) {
     return;
   }
 
@@ -715,6 +715,45 @@ function getScaleHintsForQuestion(question = getCurrentQuestion()) {
   ];
 }
 
+function splitBilingualText(text) {
+  const normalized = String(text ?? "").trim();
+  const match = normalized.match(/^(.*?)「(.*)」$/);
+  if (!match) {
+    return { japanese: normalized, english: "" };
+  }
+
+  return {
+    japanese: String(match[1] ?? "").trim(),
+    english: String(match[2] ?? "").trim(),
+  };
+}
+
+function renderQuestionHeading(element, question) {
+  if (!element) {
+    return;
+  }
+
+  const text = question?.text || bilingual("読み込み中...", "Loading...");
+  const isMultiline = question?.id === "method_diversity";
+  element.style.fontSize = "";
+  element.classList.toggle("is-multiline", isMultiline);
+
+  if (!isMultiline) {
+    element.textContent = text;
+    return;
+  }
+
+  const parts = splitBilingualText(text);
+  if (!parts.english) {
+    element.textContent = parts.japanese;
+    return;
+  }
+
+  element.innerHTML =
+    `${escapeHtml(parts.japanese)}<br />` +
+    `<span class="question-text-english">「${escapeHtml(parts.english)}」</span>`;
+}
+
 function buildEmptyAnswers() {
   return state.questionPlans.map((questionPlan) =>
     Array.from({ length: questionPlan.rounds.length }, () => ({})),
@@ -957,9 +996,7 @@ function renderQuestionIntroState() {
   if (elements.introInstruction) {
     elements.introInstruction.innerHTML = `${escapeHtml(instruction.ja)}<br />${escapeHtml(`「${instruction.en}」`)}`;
   }
-  if (elements.introQuestionText) {
-    elements.introQuestionText.textContent = question?.text || bilingual("読み込み中...", "Loading...");
-  }
+  renderQuestionHeading(elements.introQuestionText, question);
 
   if (!elements.beginQuestion) {
     return;
@@ -1294,7 +1331,7 @@ function renderQuestionState() {
     `質問 ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
     `Question ${state.currentQuestionIndex + 1} / ${state.config.questions.length}`,
   );
-  elements.questionText.textContent = question.text;
+  renderQuestionHeading(elements.questionText, question);
   if (elements.shapePrompt) {
     const shapePrompt = getCurrentShapePrompt();
     const shouldShowShapePrompt = isTextAlignmentQuestion(question) && Boolean(shapePrompt);

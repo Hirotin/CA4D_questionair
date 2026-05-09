@@ -139,6 +139,19 @@ body::before {
   overflow: hidden;
 }
 
+.intro-question-text.is-multiline,
+.question-title.is-multiline {
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.question-text-english {
+  display: block;
+  margin-top: 0.2em;
+}
+
 .intro-button {
   min-width: 240px;
   min-height: 54px;
